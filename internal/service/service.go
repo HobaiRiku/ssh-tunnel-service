@@ -1,161 +1,247 @@
 package service
 
 import (
-	"context"
-	"fmt"
-	"sort"
-	"strings"
-	"sync"
+"context"
+"errors"
+"fmt"
+"io"
+"log/slog"
+"runtime"
+"sync"
 
-	"github.com/HobaiRiku/ssh-tunnel-service/internal/domain"
+kservice "github.com/kardianos/service"
+
+"github.com/HobaiRiku/ssh-tunnel-service/internal/app"
+"github.com/HobaiRiku/ssh-tunnel-service/internal/config"
+applog "github.com/HobaiRiku/ssh-tunnel-service/internal/log"
+"github.com/HobaiRiku/ssh-tunnel-service/internal/paths"
 )
 
-type Launcher interface {
-	Launch(ctx context.Context, id string, args []string) error
-	Stop(id string) error
+const (
+serviceName        = "ssh-tunnel-service"
+serviceDisplayName = "SSH Tunnel Service"
+serviceDescription = "SSH port-forwarding tunnel manager"
+)
+
+// Program implements kardianos/service.Interface.
+type Program struct {
+home string
+run  func(context.Context, string, bool) error
+
+mu     sync.Mutex
+cancel context.CancelFunc
+done   chan struct{}
+runErr error
 }
 
-type InMemoryService struct {
-	mu       sync.RWMutex
-	remotes  map[string]domain.Remote
-	commds   map[string]domain.Commd
-	launcher Launcher
+func NewProgram(home string) *Program {
+return &Program{home: home, run: Run}
 }
 
-func New(launcher Launcher) *InMemoryService {
-	return &InMemoryService{
-		remotes:  map[string]domain.Remote{},
-		commds:   map[string]domain.Commd{},
-		launcher: launcher,
-	}
+func New(home string) (kservice.Service, *Program, error) {
+p, resolved, err := newProgram(home)
+if err != nil {
+return nil, nil, err
+}
+cfg := &kservice.Config{
+Name:             serviceName,
+DisplayName:      serviceDisplayName,
+Description:      serviceDescription,
+WorkingDirectory: resolved.Home,
+EnvVars:          map[string]string{"SSH_TUNNEL_HOME": resolved.Home},
+Option:           kservice.KeyValue{},
+}
+if runtime.GOOS == "darwin" {
+cfg.Option["UserService"] = true
+}
+svc, err := kservice.New(p, cfg)
+if err != nil {
+return nil, nil, err
+}
+return svc, p, nil
 }
 
-func (s *InMemoryService) AddRemote(remote domain.Remote) error {
-	if err := remote.Validate(); err != nil {
-		return err
-	}
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	if _, exists := s.remotes[remote.ID]; exists {
-		return fmt.Errorf("remote %q already exists", remote.ID)
-	}
-	s.remotes[remote.ID] = remote
-	return nil
+func newProgram(home string) (*Program, paths.Paths, error) {
+resolved, err := paths.Resolve(home)
+if err != nil {
+return nil, paths.Paths{}, err
+}
+return NewProgram(resolved.Home), resolved, nil
 }
 
-func (s *InMemoryService) ListRemotes() []domain.Remote {
-	s.mu.RLock()
-	defer s.mu.RUnlock()
-	result := make([]domain.Remote, 0, len(s.remotes))
-	for _, remote := range s.remotes {
-		result = append(result, remote)
-	}
-	sort.Slice(result, func(i, j int) bool {
-		return result[i].ID < result[j].ID
-	})
-	return result
+// Interactive reports whether the current process is attached to a user session.
+func Interactive() bool { return kservice.Interactive() }
+
+// RunService enters kardianos/service managed mode.
+func RunService(home string) error {
+svc, _, err := New(home)
+if err != nil {
+return err
+}
+return svc.Run()
 }
 
-func (s *InMemoryService) AddCommd(commd domain.Commd) error {
-	if err := commd.Validate(); err != nil {
-		return err
-	}
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	if _, ok := s.remotes[commd.RemoteID]; !ok {
-		return fmt.Errorf("remote %q not found", commd.RemoteID)
-	}
-	if _, exists := s.commds[commd.ID]; exists {
-		return fmt.Errorf("commd %q already exists", commd.ID)
-	}
-	s.commds[commd.ID] = commd
-	return nil
+// Install registers the service with the OS service manager.
+func Install(home string) error {
+svc, _, err := New(home)
+if err != nil {
+return err
+}
+darwinBootout()
+if err := svc.Install(); err != nil {
+return err
+}
+return darwinBootstrap()
 }
 
-func (s *InMemoryService) ListCommds() []domain.Commd {
-	s.mu.RLock()
-	defer s.mu.RUnlock()
-	result := make([]domain.Commd, 0, len(s.commds))
-	for _, commd := range s.commds {
-		result = append(result, commd)
-	}
-	sort.Slice(result, func(i, j int) bool {
-		return result[i].ID < result[j].ID
-	})
-	return result
+// Uninstall removes the service registration.
+func Uninstall(home string) error {
+svc, _, err := New(home)
+if err != nil {
+return err
+}
+darwinBootout()
+return svc.Uninstall()
 }
 
-func (s *InMemoryService) BuildSSHArgs(commdID string) ([]string, error) {
-	s.mu.RLock()
-	commd, ok := s.commds[commdID]
-	if !ok {
-		s.mu.RUnlock()
-		return nil, fmt.Errorf("commd %q not found", commdID)
-	}
-	remote, ok := s.remotes[commd.RemoteID]
-	s.mu.RUnlock()
-	if !ok {
-		return nil, fmt.Errorf("remote %q not found", commd.RemoteID)
-	}
-
-	forward := fmt.Sprintf("%s:%d:%s:%d", commd.BindAddress, commd.BindPort, commd.TargetHost, commd.TargetPort)
-	args := []string{"-N", string(commd.Direction), forward}
-	args = append(args, commd.SSHOptions...)
-	args = append(args, "-p", fmt.Sprintf("%d", remote.Port), fmt.Sprintf("%s@%s", remote.User, remote.Host))
-	return args, nil
+// Start requests the OS to start the registered service.
+func Start(home string) error {
+if started, err := darwinKickstart(); started {
+return err
+}
+svc, _, err := New(home)
+if err != nil {
+return err
+}
+return svc.Start()
 }
 
-func (s *InMemoryService) LaunchCommd(ctx context.Context, commdID string) error {
-	if s.launcher == nil {
-		return fmt.Errorf("launcher is not configured")
-	}
-	args, err := s.BuildSSHArgs(commdID)
-	if err != nil {
-		return err
-	}
-	return s.launcher.Launch(ctx, commdID, args)
+// Stop requests the OS to stop the registered service.
+func Stop(home string) error {
+if stopped, err := darwinKill(); stopped {
+return err
+}
+svc, _, err := New(home)
+if err != nil {
+return err
+}
+return svc.Stop()
 }
 
-func (s *InMemoryService) StopCommd(commdID string) error {
-	if s.launcher == nil {
-		return fmt.Errorf("launcher is not configured")
-	}
-	return s.launcher.Stop(commdID)
+// Status returns the OS service status.
+func Status(home string) (kservice.Status, error) {
+svc, _, err := New(home)
+if err != nil {
+return kservice.StatusUnknown, err
+}
+return svc.Status()
 }
 
-func (s *InMemoryService) AutoStart(ctx context.Context) error {
-	for _, commd := range s.ListCommds() {
-		if !commd.AutoStart {
-			continue
-		}
-		if err := s.LaunchCommd(ctx, commd.ID); err != nil {
-			return fmt.Errorf("autostart %s: %w", commd.ID, err)
-		}
-	}
-	return nil
+// StatusString formats the kardianos status enum for CLI output.
+func StatusString(status kservice.Status) string {
+switch status {
+case kservice.StatusRunning:
+return "running"
+case kservice.StatusStopped:
+return "stopped"
+default:
+return "unknown"
+}
 }
 
-func (s *InMemoryService) TopologyMermaid() string {
-	remotes := s.ListRemotes()
-	commds := s.ListCommds()
-	var b strings.Builder
-	b.WriteString("graph LR\n")
-	for _, remote := range remotes {
-		fmt.Fprintf(&b, "remote_%s[\"%s\\n%s@%s:%d\"]\n", remote.ID, escape(remote.Name), escape(remote.User), escape(remote.Host), remote.Port)
-	}
-	for _, commd := range commds {
-		arrow := "-->|-L|"
-		if commd.Direction == domain.DirectionRemote {
-			arrow = "-->|-R|"
-		}
-		fmt.Fprintf(&b, "commd_%s((\"%s\"))\n", commd.ID, escape(commd.Name))
-		fmt.Fprintf(&b, "commd_%s %s remote_%s\n", commd.ID, arrow, commd.RemoteID)
-		fmt.Fprintf(&b, "target_%s[\"%s:%d\"]\n", commd.ID, escape(commd.TargetHost), commd.TargetPort)
-		b.WriteString("commd_" + commd.ID + " --> target_" + commd.ID + "\n")
-	}
-	return b.String()
+// Run bootstraps paths/config/logging then blocks in app.Run.
+func Run(ctx context.Context, home string, console bool) error {
+opts, closer, err := loadOptions(home, console)
+if err != nil {
+return err
+}
+defer closer.Close()
+
+opts.Logger.Info("ssh-tunnel-service starting", "home", opts.Paths.Home, "config", opts.Paths.Config())
+return app.Run(ctx, opts)
 }
 
-func escape(v string) string {
-	return strings.NewReplacer("\"", "'", "\n", " ").Replace(v)
+func loadOptions(home string, console bool) (app.Options, io.Closer, error) {
+p, err := paths.Resolve(home)
+if err != nil {
+return app.Options{}, nil, err
+}
+if err := p.EnsureTree(); err != nil {
+return app.Options{}, nil, fmt.Errorf("prepare home %s: %w", p.Home, err)
+}
+
+cfg, err := config.Load(p.Config())
+if err != nil {
+var miss *config.MissingFileError
+if errors.As(err, &miss) {
+if err := config.WriteExample(p.Config(), p.FileMode()); err != nil {
+return app.Options{}, nil, fmt.Errorf("init config at %s: %w", miss.Path, err)
+}
+cfg, err = config.Load(p.Config())
+if err != nil {
+return app.Options{}, nil, fmt.Errorf("load initialized config: %w", err)
+}
+} else {
+return app.Options{}, nil, err
+}
+}
+
+logger, _, closer, err := applog.Init(applog.Options{
+Level:      cfg.App.LogLevel,
+File:       p.LogFile(),
+Console:    console || cfg.App.LogConsole,
+MaxSizeMB:  cfg.App.LogMaxSizeMB,
+MaxBackups: cfg.App.LogMaxBackups,
+MaxAgeDays: cfg.App.LogMaxAgeDays,
+Compress:   cfg.App.LogCompress,
+})
+if err != nil {
+return app.Options{}, nil, fmt.Errorf("log init: %w", err)
+}
+
+return app.Options{Paths: p, Config: cfg, Logger: logger}, closer, nil
+}
+
+// Start implements kardianos/service.Interface.
+func (p *Program) Start(_ kservice.Service) error {
+p.mu.Lock()
+defer p.mu.Unlock()
+if p.cancel != nil {
+return errors.New("service already started")
+}
+ctx, cancel := context.WithCancel(context.Background())
+done := make(chan struct{})
+p.cancel = cancel
+p.done = done
+p.runErr = nil
+go func() {
+err := p.run(ctx, p.home, false)
+if err != nil && !errors.Is(err, context.Canceled) {
+slog.Default().Error("service exited", "err", err)
+}
+p.mu.Lock()
+defer p.mu.Unlock()
+p.runErr = err
+p.cancel = nil
+close(done)
+}()
+return nil
+}
+
+// Stop implements kardianos/service.Interface.
+func (p *Program) Stop(_ kservice.Service) error {
+p.mu.Lock()
+cancel := p.cancel
+done := p.done
+p.mu.Unlock()
+if cancel == nil {
+return nil
+}
+cancel()
+if done != nil {
+<-done
+}
+p.mu.Lock()
+defer p.mu.Unlock()
+return p.runErr
 }

@@ -1,8 +1,0 @@
-{
-  "name": "SSH Tunnel Service",
-  "short_name": "ssh-tunnel",
-  "start_url": "/",
-  "display": "standalone",
-  "background_color": "#111827",
-  "theme_color": "#111827"
-}
