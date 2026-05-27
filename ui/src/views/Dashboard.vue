@@ -12,7 +12,8 @@ import { api, type TopologyNode, type TopologyEdge } from '@/api/client'
 import '@vue-flow/core/dist/style.css'
 import '@vue-flow/core/dist/theme-default.css'
 import '@vue-flow/controls/dist/style.css'
-import '@vue-flow/background/dist/style.css'
+
+
 
 const nodes = ref<TopologyNode[]>([])
 const edges = ref<TopologyEdge[]>([])
