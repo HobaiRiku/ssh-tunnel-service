@@ -7,8 +7,6 @@ const exampleYAML = `# ~/.ssh-tunnel-service/config.yaml
 
 app:
   http_listen: "127.0.0.1:2222"  # management API + Web UI
-  http_auth: false                # set true and provide http_token for production use
-  http_token: ""
   log_level: info                 # debug | info | warn | error
   log_console: false
 
@@ -51,5 +49,5 @@ tunnels:
 
 // WriteExample writes the annotated example config to path with the given mode.
 func WriteExample(path string, mode os.FileMode) error {
-return WriteRaw(path, []byte(exampleYAML), mode)
+	return WriteRaw(path, []byte(exampleYAML), mode)
 }

@@ -9,7 +9,7 @@ Cross-platform Go service that manages SSH `-L` / `-R` port-forwarding tunnels. 
 - **YAML config** — all config driven by `~/.ssh-tunnel-service/config.yaml`
 - **Visual topology** — Vue Flow diagram showing tunnels, remotes, and data-flow direction
 - **Daemon management** — install/start/stop/uninstall as a system service (launchd, systemd, SCM)
-- **AI-ready CLI** — structured JSON output, machine-readable flags on every command
+- **AI-ready CLI** — structured JSON output for `remote list` and `tunnel list`
 
 ## Quick start
 
@@ -107,4 +107,4 @@ make ui-build   # Build SPA into internal/web/static/
 Default location: `~/.ssh-tunnel-service/config.yaml`  
 Override: `SSH_TUNNEL_HOME=/path/to/dir` or `--home /path/to/dir`
 
-An example config is written on first run. See `config.example.yaml` for reference.
+An example config is generated at the configured home path on first run.

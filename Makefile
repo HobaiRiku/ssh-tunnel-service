@@ -45,46 +45,46 @@ all: ui-build build
 # ---- Go --------------------------------------------------------------------
 
 build: ui-build
-@mkdir -p $(BUILD_DIR)
-go build -trimpath -tags embedui -ldflags "$(LDFLAGS)" -o $(BUILD_DIR)/$(APP_NAME) .
+	@mkdir -p $(BUILD_DIR)
+	go build -trimpath -tags embedui -ldflags "$(LDFLAGS)" -o $(BUILD_DIR)/$(APP_NAME) .
 
 run:
-SSH_TUNNEL_HOME=$(LOCAL_HOME) go run -ldflags "$(LDFLAGS)" . run
+	SSH_TUNNEL_HOME=$(LOCAL_HOME) go run -ldflags "$(LDFLAGS)" . run
 
 dev: run
 
 tidy:
-go mod tidy
+	go mod tidy
 
 fmt:
-go fmt ./...
+	go fmt ./...
 
 vet:
-go vet ./...
+	go vet ./...
 
 test:
-SSH_TUNNEL_HOME=$(LOCAL_HOME) go test ./...
+	SSH_TUNNEL_HOME=$(LOCAL_HOME) go test ./...
 
 # ---- UI --------------------------------------------------------------------
 
 ui-install:
-cd $(UI_DIR) && $(PNPM) install
+	cd $(UI_DIR) && $(PNPM) install
 
 ui-dev:
-cd $(UI_DIR) && $(PNPM) run dev
+	cd $(UI_DIR) && $(PNPM) run dev
 
 ui-build: ui-install
-cd $(UI_DIR) && $(PNPM) run build
+	cd $(UI_DIR) && $(PNPM) run build
 
 ui-clean:
-rm -rf $(UI_DIR)/node_modules $(UI_DIR)/dist $(EMBED_DIR)
+	rm -rf $(UI_DIR)/node_modules $(UI_DIR)/dist $(EMBED_DIR)
 
 # ---- Cross-platform distribution -------------------------------------------
 
 dist: dist-clean ui-build
-@mkdir -p $(DIST_DIR)
-@rm -f $(DIST_DIR)/SHA256SUMS
-@for target in $(DIST_TARGETS); do \
+	@mkdir -p $(DIST_DIR)
+	@rm -f $(DIST_DIR)/SHA256SUMS
+	@for target in $(DIST_TARGETS); do \
 os=$${target%/*}; arch=$${target#*/}; \
 ext=""; \
 if [ "$$os" = "windows" ]; then ext=".exe"; fi; \
@@ -95,21 +95,21 @@ go build -trimpath -tags embedui \
 -ldflags "$(LDFLAGS)" \
 -o "$$out" . || exit 1; \
 done
-@echo ">> writing $(DIST_DIR)/SHA256SUMS"
-@cd $(DIST_DIR) && \
+	@echo ">> writing $(DIST_DIR)/SHA256SUMS"
+	@cd $(DIST_DIR) && \
 ( command -v sha256sum >/dev/null && sha256sum $(APP_NAME)_$(VERSION)_* > SHA256SUMS ) || \
 shasum -a 256 $(APP_NAME)_$(VERSION)_* > SHA256SUMS
-@ls -lh $(DIST_DIR)
+	@ls -lh $(DIST_DIR)
 
 dist-clean:
-rm -rf $(DIST_DIR)
+	rm -rf $(DIST_DIR)
 
 dist-list:
-@echo "DIST_TARGETS:"
-@for t in $(DIST_TARGETS); do echo "  $$t"; done
+	@echo "DIST_TARGETS:"
+	@for t in $(DIST_TARGETS); do echo "  $$t"; done
 
 clean:
-rm -rf $(BUILD_DIR) $(DIST_DIR)
+	rm -rf $(BUILD_DIR) $(DIST_DIR)
 
 print-version:
-@echo "version=$(VERSION) commit=$(COMMIT) date=$(DATE)"
+	@echo "version=$(VERSION) commit=$(COMMIT) date=$(DATE)"

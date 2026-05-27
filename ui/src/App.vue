@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { NConfigProvider, NLayout, NLayoutSider, NLayoutContent, NMenu, NIcon, NSpace, NText, NTag, darkTheme, useOsTheme } from 'naive-ui'
+import { NConfigProvider, NLayout, NLayoutSider, NLayoutContent, NMenu, NMessageProvider, darkTheme, useOsTheme } from 'naive-ui'
 import { RouterView, RouterLink, useRoute } from 'vue-router'
 import { computed, h } from 'vue'
 import type { MenuOption } from 'naive-ui'
@@ -28,25 +28,27 @@ const activeMenu = computed(() => route.path)
 
 <template>
   <n-config-provider :theme="theme">
-    <n-layout has-sider style="height: 100vh">
-      <n-layout-sider
-        bordered
-        :width="200"
-        :native-scrollbar="false"
-        content-style="padding: 16px 0"
-      >
-        <div style="padding: 16px; font-weight: 700; font-size: 15px; letter-spacing: 0.02em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis">
-          SSH Tunnel Service
-        </div>
-        <n-menu
-          :options="menuOptions"
-          :value="activeMenu"
-        />
-      </n-layout-sider>
-      <n-layout-content content-style="padding: 0">
-        <RouterView />
-      </n-layout-content>
-    </n-layout>
+    <n-message-provider>
+      <n-layout has-sider style="height: 100vh">
+        <n-layout-sider
+          bordered
+          :width="200"
+          :native-scrollbar="false"
+          content-style="padding: 16px 0"
+        >
+          <div style="padding: 16px; font-weight: 700; font-size: 15px; letter-spacing: 0.02em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis">
+            SSH Tunnel Service
+          </div>
+          <n-menu
+            :options="menuOptions"
+            :value="activeMenu"
+          />
+        </n-layout-sider>
+        <n-layout-content content-style="padding: 0">
+          <RouterView />
+        </n-layout-content>
+      </n-layout>
+    </n-message-provider>
   </n-config-provider>
 </template>
 

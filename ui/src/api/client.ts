@@ -35,10 +35,12 @@ export interface TopologyNode {
   data: {
     label: string
     direction?: string
+    bindAddress?: string
     bindPort?: number
     state?: string
     host?: string
     port?: number
+    user?: string
   }
   position: { x: number; y: number }
 }
