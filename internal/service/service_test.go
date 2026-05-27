@@ -59,9 +59,15 @@ func TestBuildSSHArgs(t *testing.T) {
 func TestAutoStartLaunchesOnlyAutoStartCommd(t *testing.T) {
 	launcher := &launcherStub{}
 	svc := New(launcher)
-	_ = svc.AddRemote(domain.Remote{ID: "r1", Name: "prod", Host: "remote.example", Port: 22, User: "ubuntu"})
-	_ = svc.AddCommd(domain.Commd{ID: "c1", Name: "auto", RemoteID: "r1", Direction: domain.DirectionRemote, BindAddress: "0.0.0.0", BindPort: 8080, TargetHost: "127.0.0.1", TargetPort: 80, AutoStart: true})
-	_ = svc.AddCommd(domain.Commd{ID: "c2", Name: "manual", RemoteID: "r1", Direction: domain.DirectionLocal, BindAddress: "127.0.0.1", BindPort: 3306, TargetHost: "db", TargetPort: 3306})
+	if err := svc.AddRemote(domain.Remote{ID: "r1", Name: "prod", Host: "remote.example", Port: 22, User: "ubuntu"}); err != nil {
+		t.Fatal(err)
+	}
+	if err := svc.AddCommd(domain.Commd{ID: "c1", Name: "auto", RemoteID: "r1", Direction: domain.DirectionRemote, BindAddress: "0.0.0.0", BindPort: 8080, TargetHost: "127.0.0.1", TargetPort: 80, AutoStart: true}); err != nil {
+		t.Fatal(err)
+	}
+	if err := svc.AddCommd(domain.Commd{ID: "c2", Name: "manual", RemoteID: "r1", Direction: domain.DirectionLocal, BindAddress: "127.0.0.1", BindPort: 3306, TargetHost: "db", TargetPort: 3306}); err != nil {
+		t.Fatal(err)
+	}
 
 	if err := svc.AutoStart(context.Background()); err != nil {
 		t.Fatal(err)

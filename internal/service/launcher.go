@@ -3,6 +3,7 @@ package service
 import (
 	"context"
 	"fmt"
+	"log"
 	"os/exec"
 	"sync"
 )
@@ -28,9 +29,13 @@ func (l *SSHLauncher) Launch(ctx context.Context, id string, args []string) erro
 	}
 	l.cmds[id] = cmd
 	go func() {
-		_ = cmd.Wait()
+		if err := cmd.Wait(); err != nil {
+			log.Printf("ssh command %s exited with error: %v", id, err)
+		}
 		l.mu.Lock()
-		delete(l.cmds, id)
+		if current, ok := l.cmds[id]; ok && current == cmd {
+			delete(l.cmds, id)
+		}
 		l.mu.Unlock()
 	}()
 	return nil

@@ -11,11 +11,17 @@
       mermaid.initialize({ startOnLoad: false, theme: 'default' });
 
       const render = async () => {
-        const response = await fetch('/api/topology');
-        const { mermaid: graph } = await response.json();
         const target = document.getElementById('graph');
-        target.textContent = graph;
-        await mermaid.run({ nodes: [target] });
+        try {
+          const response = await fetch('/api/topology');
+          if (!response.ok) throw new Error(`HTTP ${response.status}`);
+          const { mermaid: graph } = await response.json();
+          target.textContent = graph;
+          await mermaid.run({ nodes: [target] });
+        } catch (error) {
+          target.textContent = `graph LR\nerror["Topology unavailable: ${String(error)}"]`;
+          await mermaid.run({ nodes: [target] });
+        }
       };
 
       render();

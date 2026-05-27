@@ -24,20 +24,24 @@ type Server struct {
 func New(svc *service.InMemoryService) (*Server, error) {
 	mux := http.NewServeMux()
 	s := &Server{mux: mux, service: svc}
-	s.routes()
+
+	sub, err := fs.Sub(webFS, "web")
+	if err != nil {
+		return nil, err
+	}
+	fileServer := http.FileServer(http.FS(sub))
+	s.routes(fileServer, sub)
 	return s, nil
 }
 
 func (s *Server) Handler() http.Handler { return s.mux }
 
-func (s *Server) routes() {
+func (s *Server) routes(fileServer http.Handler, sub fs.FS) {
 	s.mux.HandleFunc("/api/remotes", s.handleRemotes)
 	s.mux.HandleFunc("/api/commds", s.handleCommds)
 	s.mux.HandleFunc("/api/topology", s.handleTopology)
 	s.mux.HandleFunc("/api/commds/", s.handleCommdAction)
 
-	sub, _ := fs.Sub(webFS, "web")
-	fileServer := http.FileServer(http.FS(sub))
 	s.mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
 		p := path.Clean(r.URL.Path)
 		if p == "/" || strings.HasPrefix(p, "/assets/") || p == "/manifest.json" || p == "/sw.js" {
