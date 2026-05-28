@@ -55,6 +55,7 @@ Commands:
     show      Print config as YAML
     edit      Open config in $EDITOR
     path      Print config file path
+    known-hosts-path  Print the effective managed known_hosts path
 
   version     Print version information
 ```
@@ -101,6 +102,8 @@ make dist
 ```bash
 make ui-dev     # Vite dev server on :5173 with /api proxy to :2222
 make ui-build   # Build SPA into internal/web/static/
+# If pnpm is not installed globally, prefix with `corepack`
+# corepack pnpm install
 ```
 
 ## Configuration
@@ -109,6 +112,14 @@ Default location: `~/.ssh-tunnel-service/config.yaml`
 Override: `SSH_TUNNEL_HOME=/path/to/dir` or `--home /path/to/dir`
 
 An example config is generated at the configured home path on first run.
+
+Useful config helpers:
+
+```bash
+ssh-tunnel-service config path
+ssh-tunnel-service config known-hosts-path
+ssh-tunnel-service config show
+```
 
 ### SSH host key policy
 

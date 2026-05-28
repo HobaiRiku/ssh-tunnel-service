@@ -2,7 +2,6 @@ package cmd
 
 import (
 	"encoding/json"
-	"errors"
 	"fmt"
 	"os"
 	"strconv"
@@ -156,27 +155,9 @@ func remoteRmCmd() *cobra.Command {
 
 // registryForCLI loads config and builds a Registry for CLI commands that read/write config.
 func registryForCLI(home string) (*services.Registry, paths.Paths, error) {
-	p, err := paths.Resolve(home)
+	cfg, p, err := loadConfigForCLI(home)
 	if err != nil {
-		return nil, paths.Paths{}, err
-	}
-	if err := p.EnsureTree(); err != nil {
-		return nil, paths.Paths{}, err
-	}
-	cfg, err := config.LoadWithDefaults(p.Config(), p.KnownHosts())
-	if err != nil {
-		var miss *config.MissingFileError
-		if errors.As(err, &miss) {
-			if err := config.WriteExample(p.Config(), p.FileMode()); err != nil {
-				return nil, p, err
-			}
-			cfg, err = config.LoadWithDefaults(p.Config(), p.KnownHosts())
-			if err != nil {
-				return nil, p, err
-			}
-		} else {
-			return nil, p, err
-		}
+		return nil, p, err
 	}
 	rt := services.NewRuntime()
 	return services.New(cfg, p, rt), p, nil

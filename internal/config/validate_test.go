@@ -31,6 +31,27 @@ func TestValidateRejectsRelativeKnownHostsPath(t *testing.T) {
 	}
 }
 
+func TestValidateRejectsMissingKnownHostsPath(t *testing.T) {
+	tests := []SSHHostKeyPolicy{
+		SSHHostKeyPolicyAcceptNew,
+		SSHHostKeyPolicyStrict,
+	}
+
+	for _, policy := range tests {
+		t.Run(string(policy), func(t *testing.T) {
+			cfg := &Config{
+				App: AppConfig{
+					SSHHostKeyPolicy: policy,
+				},
+			}
+
+			if err := Validate(cfg); err == nil {
+				t.Fatalf("expected missing known_hosts path to be rejected for policy %q", policy)
+			}
+		})
+	}
+}
+
 func TestLoadWithDefaultsAppliesKnownHostsPath(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "config.yaml")
 	if err := WriteRaw(path, []byte("app: {}\n"), 0o600); err != nil {

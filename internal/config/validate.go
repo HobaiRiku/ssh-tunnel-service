@@ -14,6 +14,11 @@ func Validate(cfg *Config) error {
 		return fmt.Errorf("app.ssh_host_key_policy must be one of %q, %q, %q",
 			SSHHostKeyPolicyAcceptNew, SSHHostKeyPolicyStrict, SSHHostKeyPolicyInsecure)
 	}
+	if (cfg.App.SSHHostKeyPolicy == SSHHostKeyPolicyAcceptNew ||
+		cfg.App.SSHHostKeyPolicy == SSHHostKeyPolicyStrict) &&
+		cfg.App.SSHKnownHosts == "" {
+		return fmt.Errorf("app.ssh_known_hosts_file is required when app.ssh_host_key_policy is %q", cfg.App.SSHHostKeyPolicy)
+	}
 	if cfg.App.SSHKnownHosts != "" && !filepath.IsAbs(cfg.App.SSHKnownHosts) {
 		return fmt.Errorf("app.ssh_known_hosts_file must be an absolute path")
 	}

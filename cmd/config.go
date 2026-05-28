@@ -1,6 +1,7 @@
 package cmd
 
 import (
+	"errors"
 	"fmt"
 	"os"
 	"os/exec"
@@ -17,7 +18,7 @@ func configCmd() *cobra.Command {
 		Use:   "config",
 		Short: "Manage service configuration",
 	}
-	root.AddCommand(configShowCmd(), configEditCmd(), configPathCmd())
+	root.AddCommand(configShowCmd(), configEditCmd(), configPathCmd(), configKnownHostsPathCmd())
 	return root
 }
 
@@ -26,11 +27,7 @@ func configShowCmd() *cobra.Command {
 		Use:   "show",
 		Short: "Print current configuration as YAML",
 		RunE: func(_ *cobra.Command, _ []string) error {
-			p, err := paths.Resolve(rootFlags.Home)
-			if err != nil {
-				return err
-			}
-			cfg, err := config.LoadWithDefaults(p.Config(), p.KnownHosts())
+			cfg, _, err := loadConfigForCLI(rootFlags.Home)
 			if err != nil {
 				return err
 			}
@@ -44,7 +41,7 @@ func configEditCmd() *cobra.Command {
 		Use:   "edit",
 		Short: "Open config in $EDITOR",
 		RunE: func(_ *cobra.Command, _ []string) error {
-			p, err := paths.Resolve(rootFlags.Home)
+			_, p, err := loadConfigForCLI(rootFlags.Home)
 			if err != nil {
 				return err
 			}
@@ -57,6 +54,21 @@ func configEditCmd() *cobra.Command {
 			cmd.Stdout = os.Stdout
 			cmd.Stderr = os.Stderr
 			return cmd.Run()
+		},
+	}
+}
+
+func configKnownHostsPathCmd() *cobra.Command {
+	return &cobra.Command{
+		Use:   "known-hosts-path",
+		Short: "Print the effective managed known_hosts file path",
+		RunE: func(_ *cobra.Command, _ []string) error {
+			cfg, _, err := loadConfigForCLI(rootFlags.Home)
+			if err != nil {
+				return err
+			}
+			fmt.Println(cfg.App.SSHKnownHosts)
+			return nil
 		},
 	}
 }
@@ -74,4 +86,30 @@ func configPathCmd() *cobra.Command {
 			return nil
 		},
 	}
+}
+
+func loadConfigForCLI(home string) (*config.Config, paths.Paths, error) {
+	p, err := paths.Resolve(home)
+	if err != nil {
+		return nil, paths.Paths{}, err
+	}
+	if err := p.EnsureTree(); err != nil {
+		return nil, paths.Paths{}, err
+	}
+	cfg, err := config.LoadWithDefaults(p.Config(), p.KnownHosts())
+	if err != nil {
+		var miss *config.MissingFileError
+		if errors.As(err, &miss) {
+			if err := config.WriteExample(p.Config(), p.FileMode()); err != nil {
+				return nil, p, err
+			}
+			cfg, err = config.LoadWithDefaults(p.Config(), p.KnownHosts())
+			if err != nil {
+				return nil, p, err
+			}
+			return cfg, p, nil
+		}
+		return nil, p, err
+	}
+	return cfg, p, nil
 }
