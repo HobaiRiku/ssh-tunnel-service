@@ -6,9 +6,11 @@ const exampleYAML = `# ~/.ssh-tunnel-service/config.yaml
 # ssh-tunnel-service configuration
 
 app:
-  http_listen: "127.0.0.1:2222"  # management API + Web UI
-  log_level: info                 # debug | info | warn | error
+  http_listen: "127.0.0.1:2222"   # management API + Web UI
+  log_level: info                  # debug | info | warn | error
   log_console: false
+  ssh_host_key_policy: accept-new  # accept-new | strict | insecure
+  # ssh_known_hosts_file defaults to <SSH_TUNNEL_HOME>/known_hosts when empty
 
 # ─── Remote SSH servers (reusable targets) ─────────────────────────────────
 remotes:
@@ -32,6 +34,7 @@ tunnels:
     ssh_options:
       - "-o"
       - "ServerAliveInterval=30"
+      # Advanced supplement; managed non-interactive/host-key options are still added automatically.
     auto_start: false
     description: "Forward local :15432 → remote db :5432"
 
