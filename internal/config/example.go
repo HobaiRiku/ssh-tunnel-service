@@ -34,7 +34,7 @@ tunnels:
     ssh_options:
       - "-o"
       - "ServerAliveInterval=30"
-      # Advanced override; managed non-interactive/host-key options are added automatically.
+      # Advanced supplement; managed non-interactive/host-key options are still added automatically.
     auto_start: false
     description: "Forward local :15432 → remote db :5432"
 
