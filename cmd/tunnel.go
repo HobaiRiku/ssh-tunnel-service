@@ -224,12 +224,8 @@ func callHTTPAction(home, method, path string) error {
 	if err != nil {
 		return err
 	}
-	cfg, err := config.Load(p.Config())
+	cfg, err := config.LoadWithDefaults(p.Config(), p.KnownHosts())
 	if err != nil {
-		return err
-	}
-	config.ApplyDefaults(cfg, p.KnownHosts())
-	if err := config.Validate(cfg); err != nil {
 		return err
 	}
 	_ = services.NewRuntime() // ensure import used

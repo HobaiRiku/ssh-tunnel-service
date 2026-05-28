@@ -30,12 +30,8 @@ func configShowCmd() *cobra.Command {
 			if err != nil {
 				return err
 			}
-			cfg, err := config.Load(p.Config())
+			cfg, err := config.LoadWithDefaults(p.Config(), p.KnownHosts())
 			if err != nil {
-				return err
-			}
-			config.ApplyDefaults(cfg, p.KnownHosts())
-			if err := config.Validate(cfg); err != nil {
 				return err
 			}
 			return yaml.NewEncoder(os.Stdout).Encode(cfg)

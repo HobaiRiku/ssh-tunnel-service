@@ -163,24 +163,20 @@ func registryForCLI(home string) (*services.Registry, paths.Paths, error) {
 	if err := p.EnsureTree(); err != nil {
 		return nil, paths.Paths{}, err
 	}
-	cfg, err := config.Load(p.Config())
+	cfg, err := config.LoadWithDefaults(p.Config(), p.KnownHosts())
 	if err != nil {
 		var miss *config.MissingFileError
 		if errors.As(err, &miss) {
 			if err := config.WriteExample(p.Config(), p.FileMode()); err != nil {
 				return nil, p, err
 			}
-			cfg, err = config.Load(p.Config())
+			cfg, err = config.LoadWithDefaults(p.Config(), p.KnownHosts())
 			if err != nil {
 				return nil, p, err
 			}
 		} else {
 			return nil, p, err
 		}
-	}
-	config.ApplyDefaults(cfg, p.KnownHosts())
-	if err := config.Validate(cfg); err != nil {
-		return nil, p, err
 	}
 	rt := services.NewRuntime()
 	return services.New(cfg, p, rt), p, nil

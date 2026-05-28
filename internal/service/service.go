@@ -170,14 +170,14 @@ func loadOptions(home string, console bool) (app.Options, io.Closer, error) {
 		return app.Options{}, nil, fmt.Errorf("prepare home %s: %w", p.Home, err)
 	}
 
-	cfg, err := config.Load(p.Config())
+	cfg, err := config.LoadWithDefaults(p.Config(), p.KnownHosts())
 	if err != nil {
 		var miss *config.MissingFileError
 		if errors.As(err, &miss) {
 			if err := config.WriteExample(p.Config(), p.FileMode()); err != nil {
 				return app.Options{}, nil, fmt.Errorf("init config at %s: %w", miss.Path, err)
 			}
-			cfg, err = config.Load(p.Config())
+			cfg, err = config.LoadWithDefaults(p.Config(), p.KnownHosts())
 			if err != nil {
 				return app.Options{}, nil, fmt.Errorf("load initialized config: %w", err)
 			}
@@ -185,11 +185,6 @@ func loadOptions(home string, console bool) (app.Options, io.Closer, error) {
 			return app.Options{}, nil, err
 		}
 	}
-	config.ApplyDefaults(cfg, p.KnownHosts())
-	if err := config.Validate(cfg); err != nil {
-		return app.Options{}, nil, fmt.Errorf("invalid config: %w", err)
-	}
-
 	logger, _, closer, err := applog.Init(applog.Options{
 		Level:      cfg.App.LogLevel,
 		File:       p.LogFile(),
