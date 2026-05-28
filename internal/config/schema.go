@@ -8,15 +8,26 @@ type Config struct {
 	Tunnels []Tunnel  `yaml:"tunnels" json:"tunnels"`
 }
 
+// SSHHostKeyPolicy controls how OpenSSH validates remote host keys.
+type SSHHostKeyPolicy string
+
+const (
+	SSHHostKeyPolicyAcceptNew SSHHostKeyPolicy = "accept-new"
+	SSHHostKeyPolicyStrict    SSHHostKeyPolicy = "strict"
+	SSHHostKeyPolicyInsecure  SSHHostKeyPolicy = "insecure"
+)
+
 // AppConfig covers the management HTTP API + Web UI.
 type AppConfig struct {
-	HTTPListen    string `yaml:"http_listen"     json:"http_listen"`
-	LogLevel      string `yaml:"log_level"       json:"log_level"`
-	LogConsole    bool   `yaml:"log_console"     json:"log_console"`
-	LogMaxSizeMB  int    `yaml:"log_max_size_mb" json:"log_max_size_mb"`
-	LogMaxBackups int    `yaml:"log_max_backups" json:"log_max_backups"`
-	LogMaxAgeDays int    `yaml:"log_max_age_days" json:"log_max_age_days"`
-	LogCompress   bool   `yaml:"log_compress"    json:"log_compress"`
+	HTTPListen       string            `yaml:"http_listen"          json:"http_listen"`
+	LogLevel         string            `yaml:"log_level"            json:"log_level"`
+	LogConsole       bool              `yaml:"log_console"          json:"log_console"`
+	LogMaxSizeMB     int               `yaml:"log_max_size_mb"      json:"log_max_size_mb"`
+	LogMaxBackups    int               `yaml:"log_max_backups"      json:"log_max_backups"`
+	LogMaxAgeDays    int               `yaml:"log_max_age_days"     json:"log_max_age_days"`
+	LogCompress      bool              `yaml:"log_compress"         json:"log_compress"`
+	SSHHostKeyPolicy SSHHostKeyPolicy  `yaml:"ssh_host_key_policy"  json:"ssh_host_key_policy"`
+	SSHKnownHosts    string            `yaml:"ssh_known_hosts_file" json:"ssh_known_hosts_file,omitempty"`
 }
 
 // Remote is a reusable SSH target server definition.

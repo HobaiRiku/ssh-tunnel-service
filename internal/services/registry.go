@@ -28,6 +28,12 @@ func (r *Registry) SetManager(m *Manager) {
 	r.manager = m
 }
 
+func (r *Registry) AppConfig() config.AppConfig {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+	return r.cfg.App
+}
+
 // ── Remotes ──────────────────────────────────────────────────────────────────
 
 func (r *Registry) ListRemotes() []config.Remote {

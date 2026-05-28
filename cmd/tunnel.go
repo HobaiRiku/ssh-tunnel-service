@@ -228,6 +228,10 @@ cfg, err := config.Load(p.Config())
 if err != nil {
 return err
 }
+config.ApplyDefaults(cfg, p.KnownHosts())
+if err := config.Validate(cfg); err != nil {
+return err
+}
 _ = services.NewRuntime() // ensure import used
 url := "http://" + cfg.App.HTTPListen + path
 resp, err := httpDo(method, url)

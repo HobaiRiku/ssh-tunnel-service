@@ -34,6 +34,10 @@ cfg, err := config.Load(p.Config())
 if err != nil {
 return err
 }
+config.ApplyDefaults(cfg, p.KnownHosts())
+if err := config.Validate(cfg); err != nil {
+return err
+}
 return yaml.NewEncoder(os.Stdout).Encode(cfg)
 },
 }

@@ -185,6 +185,10 @@ return app.Options{}, nil, fmt.Errorf("load initialized config: %w", err)
 return app.Options{}, nil, err
 }
 }
+config.ApplyDefaults(cfg, p.KnownHosts())
+if err := config.Validate(cfg); err != nil {
+	return app.Options{}, nil, fmt.Errorf("invalid config: %w", err)
+}
 
 logger, _, closer, err := applog.Init(applog.Options{
 Level:      cfg.App.LogLevel,

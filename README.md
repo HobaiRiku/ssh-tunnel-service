@@ -7,6 +7,7 @@ Cross-platform Go service that manages SSH `-L` / `-R` port-forwarding tunnels. 
 - **Remotes** — reusable SSH server definitions (host, port, user)
 - **Tunnels** — `-L` (local forward) or `-R` (remote forward) rules referencing a remote
 - **YAML config** — all config driven by `~/.ssh-tunnel-service/config.yaml`
+- **Non-interactive SSH** — service-managed `known_hosts` trust store with configurable host-key policy
 - **Visual topology** — Vue Flow diagram showing tunnels, remotes, and data-flow direction
 - **Daemon management** — install/start/stop/uninstall as a system service (launchd, systemd, SCM)
 - **AI-ready CLI** — structured JSON output for `remote list` and `tunnel list`
@@ -108,3 +109,17 @@ Default location: `~/.ssh-tunnel-service/config.yaml`
 Override: `SSH_TUNNEL_HOME=/path/to/dir` or `--home /path/to/dir`
 
 An example config is generated at the configured home path on first run.
+
+### SSH host key policy
+
+The service always starts `ssh` in non-interactive mode (`BatchMode=yes`), so tunnel startup will either succeed immediately or fail with a diagnostic error instead of hanging on a host-key/password prompt.
+
+Supported `app.ssh_host_key_policy` values:
+
+- `accept-new` — default; automatically trusts first-seen host keys, then enforces future verification
+- `strict` — only trusts hosts already present in the configured `known_hosts` file
+- `insecure` — disables host-key verification; use only for temporary debugging
+
+`app.ssh_known_hosts_file` defaults to `<SSH_TUNNEL_HOME>/known_hosts`, so the service does not implicitly depend on the current user's `~/.ssh/known_hosts`.
+
+`ssh_options` is still supported for advanced OpenSSH overrides, but the service now manages the default non-interactive and host-key behavior directly.

@@ -23,6 +23,7 @@ subLogs = "logs"
 
 fileConfig = "config.yaml"
 fileLog    = "ssh-tunnel-service.log"
+fileKnownHosts = "known_hosts"
 
 dirMode  os.FileMode = 0o700
 fileMode os.FileMode = 0o600
@@ -76,5 +77,6 @@ return nil
 func (p Paths) Data() string   { return filepath.Join(p.Home, subData) }
 func (p Paths) Logs() string   { return filepath.Join(p.Home, subLogs) }
 func (p Paths) Config() string { return filepath.Join(p.Home, fileConfig) }
+func (p Paths) KnownHosts() string { return filepath.Join(p.Home, fileKnownHosts) }
 func (p Paths) LogFile() string { return filepath.Join(p.Logs(), fileLog) }
 func (p Paths) FileMode() os.FileMode { return fileMode }

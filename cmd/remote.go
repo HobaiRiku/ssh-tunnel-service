@@ -178,6 +178,10 @@ return nil, p, err
 return nil, p, err
 }
 }
+config.ApplyDefaults(cfg, p.KnownHosts())
+if err := config.Validate(cfg); err != nil {
+	return nil, p, err
+}
 rt := services.NewRuntime()
 return services.New(cfg, p, rt), p, nil
 }
