@@ -148,7 +148,11 @@ ssh-tunnel-service config show
 
 ### SSH host key policy
 
-The service always starts `ssh` in non-interactive mode (`BatchMode=yes`), so tunnel startup will either succeed immediately or fail with a diagnostic error instead of hanging on a host-key/password prompt.
+The service always starts `ssh` in non-interactive mode (`BatchMode=yes`, with password and keyboard-interactive auth disabled), so tunnel startup will either succeed immediately or fail with a diagnostic error instead of hanging on a host-key/password prompt.
+
+### Authentication
+
+Because tunnels run non-interactively, **remotes must authenticate with a key** — password and keyboard-interactive prompts are turned off. Load your key into the agent (`ssh-add`) or rely on the default identity files (`~/.ssh/id_*`). A remote that only accepts a password will fail fast and the tunnel is flagged as `error` with a diagnostic explaining that key-based authentication is required.
 
 Supported `app.ssh_host_key_policy` values:
 

@@ -53,7 +53,17 @@ func (m *Manager) Start(ctx context.Context, id string) error {
 		}
 	}
 
-	args := []string{"-N", "-o", "BatchMode=yes"}
+	// The service runs ssh non-interactively, so disable every form of
+	// interactive credential prompting. Without this a remote that requires a
+	// password (or keyboard-interactive) auth would otherwise hang waiting on
+	// stdin forever; instead ssh fails fast and the tunnel is marked as error.
+	args := []string{
+		"-N",
+		"-o", "BatchMode=yes",
+		"-o", "PasswordAuthentication=no",
+		"-o", "KbdInteractiveAuthentication=no",
+		"-o", "NumberOfPasswordPrompts=0",
+	}
 	args = append(args, sshHostKeyArgs(appCfg)...)
 	args = append(args, string(ts.Direction), forward)
 	args = append(args, ts.SSHOptions...)
@@ -186,6 +196,9 @@ func diagnoseSSHFailure(stderr string) string {
 		strings.Contains(lower, "man-in-the-middle"):
 		return "remote host key changed; inspect the server and refresh the configured known_hosts file"
 	case strings.Contains(lower, "permission denied"):
+		if strings.Contains(lower, "password") || strings.Contains(lower, "keyboard-interactive") {
+			return "ssh authentication failed; the remote requires password/keyboard-interactive auth, which the service cannot use because it runs ssh non-interactively — configure key-based authentication for this remote"
+		}
 		return "ssh authentication failed; verify keys, agent access, and remote user permissions"
 	case strings.Contains(lower, "could not resolve hostname"),
 		strings.Contains(lower, "name or service not known"):
