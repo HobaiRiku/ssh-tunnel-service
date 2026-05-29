@@ -2,6 +2,7 @@ package web
 
 import (
 	"bytes"
+	"encoding/json"
 	"io/fs"
 	"net/http"
 	"path"
@@ -78,7 +79,8 @@ func serveEmbedded(w http.ResponseWriter, r *http.Request, sub fs.FS, token stri
 		body = []byte(uiNotBuiltHTML)
 	}
 	if token != "" {
-		injection := []byte(`<script>window.__AUTH_TOKEN__="` + token + `"</script>`)
+		tokenJSON, _ := json.Marshal(token)
+		injection := append([]byte(`<script>window.__AUTH_TOKEN__=`), append(tokenJSON, []byte(`</script>`)...)...)
 		body = bytes.Replace(body, []byte("</head>"), append(injection, []byte("</head>")...), 1)
 	}
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")

@@ -36,7 +36,16 @@ func NewRouter(opts Options) *gin.Engine {
 
 	// Unprotected endpoints
 	r.GET("/api/health", func(c *gin.Context) { c.JSON(http.StatusOK, gin.H{"ok": true}) })
-	r.GET("/api/bootstrap", func(c *gin.Context) { c.JSON(http.StatusOK, gin.H{"token": opts.APIToken}) })
+	// Bootstrap: returns the token so the web UI can authenticate API calls.
+	// Restricted to loopback addresses; a non-loopback http_listen does not widen access.
+	r.GET("/api/bootstrap", func(c *gin.Context) {
+		ip := c.ClientIP()
+		if ip != "127.0.0.1" && ip != "::1" {
+			c.AbortWithStatusJSON(http.StatusForbidden, apiError(errors.New("forbidden")))
+			return
+		}
+		c.JSON(http.StatusOK, gin.H{"token": opts.APIToken})
+	})
 
 	// Protected API group
 	api := r.Group("/api")

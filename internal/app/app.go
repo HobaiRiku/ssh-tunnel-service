@@ -19,9 +19,10 @@ import (
 
 // Options bundles the inputs Run needs. Built by cmd/ from CLI flags.
 type Options struct {
-	Paths  paths.Paths
-	Config *config.Config
-	Logger *slog.Logger
+	Paths    paths.Paths
+	Config   *config.Config
+	Logger   *slog.Logger
+	APIToken string // loaded from the token file, not from config.yaml
 }
 
 // Run starts the tunnel manager and HTTP server and blocks until ctx is cancelled.
@@ -32,6 +33,7 @@ func Run(ctx context.Context, opts Options) error {
 
 	info := version.Current()
 	opts.Logger.Info("ssh-tunnel-service starting", "version", info.Version, "home", opts.Paths.Home)
+	opts.Logger.Info("api token loaded", "token_file", opts.Paths.Token())
 
 	rt := services.NewRuntime()
 	reg := services.New(opts.Config, opts.Paths, rt)
@@ -47,9 +49,9 @@ func Run(ctx context.Context, opts Options) error {
 		Runtime:  rt,
 		Manager:  mgr,
 		Logger:   opts.Logger.With("component", "api"),
-		APIToken: opts.Config.App.APIToken,
+		APIToken: opts.APIToken,
 	})
-	web.Mount(router, opts.Config.App.APIToken)
+	web.Mount(router, opts.APIToken)
 
 	srv := &http.Server{
 		Addr:              opts.Config.App.HTTPListen,

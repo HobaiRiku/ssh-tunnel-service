@@ -20,7 +20,6 @@ const (
 // AppConfig covers the management HTTP API + Web UI.
 type AppConfig struct {
 	HTTPListen       string           `yaml:"http_listen"          json:"http_listen"`
-	APIToken         string           `yaml:"api_token"            json:"-"`
 	LogLevel         string           `yaml:"log_level"            json:"log_level"`
 	LogConsole       bool             `yaml:"log_console"          json:"log_console"`
 	LogMaxSizeMB     int              `yaml:"log_max_size_mb"      json:"log_max_size_mb"`

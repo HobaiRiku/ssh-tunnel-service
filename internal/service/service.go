@@ -6,7 +6,9 @@ import (
 	"fmt"
 	"io"
 	"log/slog"
+	"os"
 	"runtime"
+	"strings"
 	"sync"
 
 	kservice "github.com/kardianos/service"
@@ -185,12 +187,13 @@ func loadOptions(home string, console bool) (app.Options, io.Closer, error) {
 			return app.Options{}, nil, err
 		}
 	}
-	if cfg.App.APIToken == "" {
-		cfg.App.APIToken = config.GenerateToken()
-		if err := config.Write(p.Config(), cfg, p.FileMode()); err != nil {
-			return app.Options{}, nil, fmt.Errorf("persist api token: %w", err)
-		}
+
+	// Load or generate the API token from its own file so config.yaml is never rewritten.
+	token, err := loadOrGenerateToken(p.Token(), p.FileMode())
+	if err != nil {
+		return app.Options{}, nil, fmt.Errorf("api token: %w", err)
 	}
+
 	logger, _, closer, err := applog.Init(applog.Options{
 		Level:      cfg.App.LogLevel,
 		File:       p.LogFile(),
@@ -204,7 +207,23 @@ func loadOptions(home string, console bool) (app.Options, io.Closer, error) {
 		return app.Options{}, nil, fmt.Errorf("log init: %w", err)
 	}
 
-	return app.Options{Paths: p, Config: cfg, Logger: logger}, closer, nil
+	return app.Options{Paths: p, Config: cfg, Logger: logger, APIToken: token}, closer, nil
+}
+
+// loadOrGenerateToken reads the token from tokenPath, creating it if absent.
+func loadOrGenerateToken(tokenPath string, mode os.FileMode) (string, error) {
+	data, err := os.ReadFile(tokenPath)
+	if err == nil {
+		if t := strings.TrimSpace(string(data)); t != "" {
+			return t, nil
+		}
+	}
+	t := config.GenerateToken()
+	if err := os.WriteFile(tokenPath, []byte(t+"\n"), mode); err != nil {
+		return "", fmt.Errorf("write token file %s: %w", tokenPath, err)
+	}
+	fmt.Fprintf(os.Stderr, "ssh-tunnel-service: generated new API token → %s\n", tokenPath)
+	return t, nil
 }
 
 // Start implements kardianos/service.Interface.

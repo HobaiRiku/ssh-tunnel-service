@@ -44,7 +44,7 @@ make dev
 
 Open: `http://localhost:2222`
 
-The API token is printed to the log on first run and stored in `~/.ssh-tunnel-service/config.yaml` (`app.api_token`).
+On first run the service generates an API token and writes it to `~/.ssh-tunnel-service/token` (printed to stderr). The web UI retrieves the token automatically; CLI commands also read it from the same file.
 
 ## CLI reference
 
@@ -84,10 +84,10 @@ Commands:
 
 ## API examples
 
-All API calls (except `/api/health` and `/api/bootstrap`) require the `Authorization: Bearer <token>` header. Retrieve the token from `~/.ssh-tunnel-service/config.yaml` or via the bootstrap endpoint:
+All API calls (except `/api/health` and `/api/bootstrap`) require the `Authorization: Bearer <token>` header. The token is stored in `~/.ssh-tunnel-service/token`:
 
 ```bash
-TOKEN=$(curl -s http://localhost:2222/api/bootstrap | jq -r .token)
+TOKEN=$(cat ~/.ssh-tunnel-service/token)
 
 # List remotes
 curl -H "Authorization: Bearer $TOKEN" http://localhost:2222/api/remotes

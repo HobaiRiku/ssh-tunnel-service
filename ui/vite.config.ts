@@ -22,9 +22,11 @@ export default defineConfig({
         ]
       },
       workbox: {
-        // Only cache static assets; skip API calls
-        runtimeCaching: [],
-        globPatterns: ['**/*.{js,css,html,svg,woff2}']
+        // index.html is excluded: it carries the server-injected auth token and must
+        // never be served stale from the cache. Only immutable static assets are precached.
+        globPatterns: ['**/*.{js,css,svg,woff2}'],
+        navigateFallback: null,
+        runtimeCaching: []
       }
     })
   ],

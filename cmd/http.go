@@ -1,19 +1,26 @@
 package cmd
 
 import (
-"net/http"
+	"net/http"
 
-"github.com/HobaiRiku/ssh-tunnel-service/internal/paths"
+	"github.com/HobaiRiku/ssh-tunnel-service/internal/paths"
 )
 
 func httpDo(method, url string) (*http.Response, error) {
-req, err := http.NewRequest(method, url, nil)
-if err != nil {
-return nil, err
+	return httpDoWithToken(method, url, "")
 }
-return http.DefaultClient.Do(req)
+
+func httpDoWithToken(method, url, token string) (*http.Response, error) {
+	req, err := http.NewRequest(method, url, nil)
+	if err != nil {
+		return nil, err
+	}
+	if token != "" {
+		req.Header.Set("Authorization", "Bearer "+token)
+	}
+	return http.DefaultClient.Do(req)
 }
 
 func registryForCLIPath(home string) (paths.Paths, error) {
-return paths.Resolve(home)
+	return paths.Resolve(home)
 }
