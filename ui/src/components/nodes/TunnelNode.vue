@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { computed } from 'vue'
 import { Handle, Position } from '@vue-flow/core'
 
 const props = defineProps<{
@@ -11,73 +12,102 @@ const props = defineProps<{
   }
 }>()
 
-const stateColor: Record<string, string> = {
-  running: '#16a34a',
-  stopped: '#6b7280',
-  error: '#dc2626'
-}
+const stateStyle = computed(() => {
+  switch (props.data.state) {
+    case 'running': return { bg: '#f0fdf4', border: '#22c55e', dot: '#22c55e' }
+    case 'error':   return { bg: '#fef2f2', border: '#ef4444', dot: '#ef4444' }
+    default:        return { bg: '#f8fafc', border: '#cbd5e1', dot: '#94a3b8' }
+  }
+})
 </script>
 
 <template>
-  <div class="tunnel-node" :class="`state-${data.state}`">
-    <div class="node-header">
-      <span class="icon">🔌</span>
-      <span class="label">{{ data.label }}</span>
-      <span class="dir-badge">{{ data.direction }}</span>
+  <div
+    class="tunnel-node"
+    :style="{ background: stateStyle.bg, borderColor: stateStyle.border }"
+  >
+    <div class="tunnel-top">
+      <svg class="icon" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round">
+        <path d="M3 10h14M11 5l6 5-6 5"/>
+      </svg>
+      <span class="name">{{ data.label }}</span>
+      <span class="state-dot" :style="{ background: stateStyle.dot }"></span>
     </div>
-    <div class="node-body">
-      <div class="info-row">
-        <span class="key">bind</span>
-        <span class="value">{{ data.bindAddress }}:{{ data.bindPort }}</span>
-      </div>
-      <div class="info-row">
-        <span class="key">state</span>
-        <span class="value state-text" :style="{ color: stateColor[data.state] || '#6b7280' }">
-          {{ data.state }}
-        </span>
-      </div>
+    <div class="tunnel-info">
+      <span class="dir-badge" :class="data.direction === '-L' ? 'local' : 'remote'">{{ data.direction }}</span>
+      <span class="addr">{{ data.bindAddress }}:{{ data.bindPort }}</span>
     </div>
-    <Handle type="source" :position="Position.Left" id="left" />
-    <Handle type="source" :position="Position.Right" id="right" />
-    <Handle type="target" :position="Position.Top" id="top" />
-    <Handle type="target" :position="Position.Bottom" id="bottom" />
+    <Handle type="source" :position="Position.Right" class="handle-right" />
   </div>
 </template>
 
 <style scoped>
 .tunnel-node {
-  border: 2px solid #d97706;
+  border: 1.5px solid;
   border-radius: 8px;
-  min-width: 180px;
-  font-size: 12px;
+  width: 190px;
   overflow: hidden;
-  background: #fef3c710;
+  box-shadow: 0 1px 4px rgba(0,0,0,0.08);
 }
-.tunnel-node.state-running { border-color: #16a34a; background: #f0fdf410; }
-.tunnel-node.state-error   { border-color: #dc2626; background: #fef2f210; }
-.node-header {
-  background: #d97706;
-  color: white;
-  padding: 6px 10px;
+
+.tunnel-top {
   display: flex;
   align-items: center;
   gap: 6px;
+  padding: 7px 10px 5px;
+  border-bottom: 1px solid rgba(0,0,0,0.06);
+}
+
+.icon { width: 14px; height: 14px; color: #64748b; flex-shrink: 0; }
+
+.name {
   font-weight: 600;
-  font-size: 13px;
+  font-size: 12px;
+  color: #1e293b;
+  flex: 1;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
-.state-running .node-header { background: #16a34a; }
-.state-error .node-header   { background: #dc2626; }
+
+.state-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.tunnel-info {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 10px 7px;
+}
+
 .dir-badge {
-  margin-left: auto;
-  background: rgba(255,255,255,0.3);
-  border-radius: 4px;
-  padding: 1px 5px;
-  font-family: monospace;
-  font-size: 11px;
+  font-family: 'SF Mono', 'Fira Code', monospace;
+  font-size: 10px;
   font-weight: 700;
+  padding: 1px 5px;
+  border-radius: 4px;
+  flex-shrink: 0;
 }
-.node-body { padding: 8px 10px; }
-.info-row { display: flex; justify-content: space-between; gap: 8px; margin-bottom: 2px; }
-.key { color: #6b7280; }
-.value { font-family: monospace; color: #111827; }
+.dir-badge.local  { background: #dbeafe; color: #1d4ed8; }
+.dir-badge.remote { background: #fce7f3; color: #9d174d; }
+
+.addr {
+  font-family: 'SF Mono', 'Fira Code', monospace;
+  font-size: 10.5px;
+  color: #475569;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+:deep(.handle-right) {
+  width: 10px !important;
+  height: 10px !important;
+  background: #2563eb !important;
+  border: 2px solid white !important;
+}
 </style>

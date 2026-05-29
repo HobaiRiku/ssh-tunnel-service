@@ -2,7 +2,7 @@ package api
 
 import (
 	"context"
-	"fmt"
+	"errors"
 	"log/slog"
 	"net/http"
 	"strings"
@@ -21,6 +21,7 @@ type Options struct {
 	Runtime  *services.Runtime
 	Manager  *services.Manager
 	Logger   *slog.Logger
+	APIToken string
 }
 
 // NewRouter builds the gin engine with all API routes mounted.
@@ -33,15 +34,18 @@ func NewRouter(opts Options) *gin.Engine {
 	r.Use(gin.Recovery())
 	r.Use(accessLog(opts.Logger))
 
-	// Health / version
+	// Unprotected endpoints
 	r.GET("/api/health", func(c *gin.Context) { c.JSON(http.StatusOK, gin.H{"ok": true}) })
-	r.GET("/api/version", func(c *gin.Context) { c.JSON(http.StatusOK, version.Current()) })
+	r.GET("/api/bootstrap", func(c *gin.Context) { c.JSON(http.StatusOK, gin.H{"token": opts.APIToken}) })
 
-	// Topology (read-only)
-	r.GET("/api/topology", topologyHandler(opts.Registry))
+	// Protected API group
+	api := r.Group("/api")
+	api.Use(tokenAuth(opts.APIToken))
+
+	api.GET("/version", func(c *gin.Context) { c.JSON(http.StatusOK, version.Current()) })
 
 	// Remotes CRUD
-	remotes := r.Group("/api/remotes")
+	remotes := api.Group("/remotes")
 	remotes.GET("", listRemotes(opts.Registry))
 	remotes.POST("", addRemote(opts.Registry))
 	remotes.GET("/:id", getRemote(opts.Registry))
@@ -49,7 +53,7 @@ func NewRouter(opts Options) *gin.Engine {
 	remotes.DELETE("/:id", deleteRemote(opts.Registry))
 
 	// Tunnels CRUD + actions
-	tunnels := r.Group("/api/tunnels")
+	tunnels := api.Group("/tunnels")
 	tunnels.GET("", listTunnels(opts.Registry))
 	tunnels.POST("", addTunnel(opts.Registry))
 	tunnels.GET("/:id", getTunnel(opts.Registry))
@@ -211,118 +215,6 @@ func stopTunnel(mgr *services.Manager) gin.HandlerFunc {
 	}
 }
 
-// ── Topology ─────────────────────────────────────────────────────────────────
-
-type topoNode struct {
-	ID       string       `json:"id"`
-	Type     string       `json:"type"`
-	Data     any          `json:"data"`
-	Position topoPosition `json:"position"`
-}
-
-type topoEdge struct {
-	ID       string `json:"id"`
-	Source   string `json:"source"`
-	Target   string `json:"target"`
-	Label    string `json:"label"`
-	Animated bool   `json:"animated"`
-}
-
-type topoPosition struct {
-	X float64 `json:"x"`
-	Y float64 `json:"y"`
-}
-
-type remoteNodeData struct {
-	Label string `json:"label"`
-	Host  string `json:"host"`
-	Port  int    `json:"port"`
-	User  string `json:"user,omitempty"`
-}
-
-type tunnelNodeData struct {
-	Label       string `json:"label"`
-	Direction   string `json:"direction"`
-	BindAddress string `json:"bindAddress"`
-	BindPort    int    `json:"bindPort"`
-	State       string `json:"state"`
-}
-
-type targetNodeData struct {
-	Label string `json:"label"`
-	Host  string `json:"host"`
-	Port  int    `json:"port"`
-}
-
-func topologyHandler(reg *services.Registry) gin.HandlerFunc {
-	return func(c *gin.Context) {
-		remotes := reg.ListRemotes()
-		tunnels := reg.ListTunnels()
-
-		nodes := make([]topoNode, 0, len(remotes)+len(tunnels)*2)
-		edges := make([]topoEdge, 0, len(tunnels)*2)
-		for i, r := range remotes {
-			y := float64(i * 180)
-			nodes = append(nodes, topoNode{
-				ID:   "remote-" + r.ID,
-				Type: "remote",
-				Data: remoteNodeData{
-					Label: r.Name,
-					Host:  r.Host,
-					Port:  r.Port,
-					User:  r.User,
-				},
-				Position: topoPosition{X: 0, Y: y},
-			})
-		}
-		for i, ts := range tunnels {
-			tunnelNodeID := "tunnel-" + ts.ID
-			targetNodeID := "target-" + ts.ID
-			y := float64(i * 180)
-			nodes = append(nodes, topoNode{
-				ID:   tunnelNodeID,
-				Type: "tunnel",
-				Data: tunnelNodeData{
-					Label:       ts.Name,
-					Direction:   string(ts.Direction),
-					BindAddress: ts.BindAddress,
-					BindPort:    ts.BindPort,
-					State:       string(ts.State),
-				},
-				Position: topoPosition{X: 320, Y: y},
-			})
-			nodes = append(nodes, topoNode{
-				ID:   targetNodeID,
-				Type: "target",
-				Data: targetNodeData{
-					Label: fmt.Sprintf("%s:%d", ts.TargetHost, ts.TargetPort),
-					Host:  ts.TargetHost,
-					Port:  ts.TargetPort,
-				},
-				Position: topoPosition{X: 640, Y: y},
-			})
-			// edge: tunnel → remote
-			edges = append(edges, topoEdge{
-				ID:       "e-" + ts.ID + "-remote",
-				Source:   tunnelNodeID,
-				Target:   "remote-" + ts.RemoteID,
-				Label:    string(ts.Direction),
-				Animated: true,
-			})
-			// edge: tunnel → target
-			edges = append(edges, topoEdge{
-				ID:       "e-" + ts.ID + "-target",
-				Source:   tunnelNodeID,
-				Target:   targetNodeID,
-				Label:    fmt.Sprintf(":%d", ts.BindPort),
-				Animated: true,
-			})
-		}
-
-		c.JSON(http.StatusOK, gin.H{"nodes": nodes, "edges": edges})
-	}
-}
-
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
 func apiError(err error) gin.H {
@@ -332,10 +224,25 @@ func apiError(err error) gin.H {
 func accessLog(logger *slog.Logger) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		c.Next()
-		logger.Info("api",
+		logger.Debug("api",
 			"method", c.Request.Method,
 			"path", c.Request.URL.Path,
 			"status", c.Writer.Status(),
 		)
+	}
+}
+
+func tokenAuth(token string) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		if token == "" {
+			c.Next()
+			return
+		}
+		auth := c.GetHeader("Authorization")
+		if !strings.HasPrefix(auth, "Bearer ") || auth[len("Bearer "):] != token {
+			c.AbortWithStatusJSON(http.StatusUnauthorized, apiError(errors.New("unauthorized")))
+			return
+		}
+		c.Next()
 	}
 }

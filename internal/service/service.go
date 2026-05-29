@@ -185,6 +185,12 @@ func loadOptions(home string, console bool) (app.Options, io.Closer, error) {
 			return app.Options{}, nil, err
 		}
 	}
+	if cfg.App.APIToken == "" {
+		cfg.App.APIToken = config.GenerateToken()
+		if err := config.Write(p.Config(), cfg, p.FileMode()); err != nil {
+			return app.Options{}, nil, fmt.Errorf("persist api token: %w", err)
+		}
+	}
 	logger, _, closer, err := applog.Init(applog.Options{
 		Level:      cfg.App.LogLevel,
 		File:       p.LogFile(),

@@ -1,16 +1,36 @@
 # ssh-tunnel-service
 
-Cross-platform Go service that manages SSH `-L` / `-R` port-forwarding tunnels. Follows the [ws2tcp](https://github.com/HobaiRiku/ws2tcp) architecture: cobra CLI, kardianos/service daemon, gin HTTP API, and an embedded Vue 3 SPA with interactive topology visualization.
+Cross-platform Go daemon that manages SSH `-L` / `-R` port-forwarding tunnels via a CLI, REST API, and an embedded Vue 3 web UI with interactive topology visualization.
 
 ## Features
 
 - **Remotes** — reusable SSH server definitions (host, port, user)
 - **Tunnels** — `-L` (local forward) or `-R` (remote forward) rules referencing a remote
 - **YAML config** — all config driven by `~/.ssh-tunnel-service/config.yaml`
+- **API token auth** — generated on first run; injected into the web UI automatically
 - **Non-interactive SSH** — service-managed `known_hosts` trust store with configurable host-key policy
-- **Visual topology** — Vue Flow diagram showing tunnels, remotes, and data-flow direction
+- **Visual topology** — interactive flow diagram showing tunnels, remotes, and port mappings, grouped by remote
 - **Daemon management** — install/start/stop/uninstall as a system service (launchd, systemd, SCM)
 - **AI-ready CLI** — structured JSON output for `remote list` and `tunnel list`
+- **PWA** — installable as a progressive web app from the browser
+
+## Installation
+
+### Homebrew (macOS / Linux)
+
+```bash
+brew install hobairiku/tap/ssh-tunnel-service
+```
+
+### Go install
+
+```bash
+go install github.com/HobaiRiku/ssh-tunnel-service@latest
+```
+
+### Pre-built binaries
+
+Download the appropriate binary from the [Releases](https://github.com/HobaiRiku/ssh-tunnel-service/releases) page, make it executable, and place it on your `$PATH`.
 
 ## Quick start
 
@@ -23,6 +43,8 @@ make dev
 ```
 
 Open: `http://localhost:2222`
+
+The API token is printed to the log on first run and stored in `~/.ssh-tunnel-service/config.yaml` (`app.api_token`).
 
 ## CLI reference
 
@@ -62,26 +84,29 @@ Commands:
 
 ## API examples
 
+All API calls (except `/api/health` and `/api/bootstrap`) require the `Authorization: Bearer <token>` header. Retrieve the token from `~/.ssh-tunnel-service/config.yaml` or via the bootstrap endpoint:
+
 ```bash
+TOKEN=$(curl -s http://localhost:2222/api/bootstrap | jq -r .token)
+
 # List remotes
-curl http://localhost:2222/api/remotes
+curl -H "Authorization: Bearer $TOKEN" http://localhost:2222/api/remotes
 
 # Add a remote
 curl -X POST http://localhost:2222/api/remotes \
+  -H "Authorization: Bearer $TOKEN" \
   -H 'content-type: application/json' \
   -d '{"id":"prod","name":"Production","host":"ssh.example.com","port":22,"user":"ubuntu"}'
 
 # Add a -L tunnel (local :15432 → remote postgres :5432)
 curl -X POST http://localhost:2222/api/tunnels \
+  -H "Authorization: Bearer $TOKEN" \
   -H 'content-type: application/json' \
   -d '{"id":"db","name":"DB","remote_id":"prod","direction":"-L","bind_address":"127.0.0.1","bind_port":15432,"target_host":"127.0.0.1","target_port":5432,"auto_start":true}'
 
 # Start / stop
-curl -X POST http://localhost:2222/api/tunnels/db/start
-curl -X POST http://localhost:2222/api/tunnels/db/stop
-
-# Topology graph (Vue Flow-compatible nodes/edges)
-curl http://localhost:2222/api/topology
+curl -X POST -H "Authorization: Bearer $TOKEN" http://localhost:2222/api/tunnels/db/start
+curl -X POST -H "Authorization: Bearer $TOKEN" http://localhost:2222/api/tunnels/db/stop
 ```
 
 ## Building
@@ -111,7 +136,7 @@ make ui-build   # Build SPA into internal/web/static/
 Default location: `~/.ssh-tunnel-service/config.yaml`  
 Override: `SSH_TUNNEL_HOME=/path/to/dir` or `--home /path/to/dir`
 
-An example config is generated at the configured home path on first run.
+An example config is generated at the configured home path on first run. The `api_token` field is automatically populated on first startup.
 
 Useful config helpers:
 

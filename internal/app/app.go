@@ -47,8 +47,9 @@ func Run(ctx context.Context, opts Options) error {
 		Runtime:  rt,
 		Manager:  mgr,
 		Logger:   opts.Logger.With("component", "api"),
+		APIToken: opts.Config.App.APIToken,
 	})
-	web.Mount(router)
+	web.Mount(router, opts.Config.App.APIToken)
 
 	srv := &http.Server{
 		Addr:              opts.Config.App.HTTPListen,

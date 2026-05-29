@@ -29,41 +29,35 @@ export interface TunnelStatus extends Tunnel {
   error: string
 }
 
-export interface TopologyNode {
-  id: string
-  type: string
-  data: {
-    label: string
-    direction?: string
-    bindAddress?: string
-    bindPort?: number
-    state?: string
-    host?: string
-    port?: number
-    user?: string
+let _token: string | null = null
+
+export async function initAuth(): Promise<void> {
+  const injected = (window as any).__AUTH_TOKEN__
+  if (injected) {
+    _token = injected
+    return
   }
-  position: { x: number; y: number }
-}
-
-export interface TopologyEdge {
-  id: string
-  source: string
-  target: string
-  label: string
-  animated?: boolean
-}
-
-export interface TopologyGraph {
-  nodes: TopologyNode[]
-  edges: TopologyEdge[]
+  try {
+    const res = await fetch('/api/bootstrap')
+    if (res.ok) {
+      const data = await res.json()
+      _token = data.token ?? null
+    }
+  } catch {
+    _token = null
+  }
 }
 
 const BASE = '/api'
 
 async function req<T>(method: string, path: string, body?: unknown): Promise<T> {
+  const headers: Record<string, string> = {}
+  if (body) headers['Content-Type'] = 'application/json'
+  if (_token) headers['Authorization'] = `Bearer ${_token}`
+
   const res = await fetch(BASE + path, {
     method,
-    headers: body ? { 'Content-Type': 'application/json' } : {},
+    headers,
     body: body ? JSON.stringify(body) : undefined
   })
   if (!res.ok) {
@@ -89,9 +83,6 @@ export const api = {
   startTunnel: (id: string) => req<void>('POST', `/tunnels/${id}/start`),
   stopTunnel: (id: string) => req<void>('POST', `/tunnels/${id}/stop`),
 
-  // Topology
-  topology: () => req<TopologyGraph>('GET', '/topology'),
-
   // Health
-  health: () => req<{ status: string }>('GET', '/health')
+  health: () => req<{ ok: boolean }>('GET', '/health')
 }
