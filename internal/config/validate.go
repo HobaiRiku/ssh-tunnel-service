@@ -1,9 +1,20 @@
 package config
 
 import (
+	"crypto/rand"
+	"encoding/hex"
 	"fmt"
 	"path/filepath"
 )
+
+// GenerateToken returns a 32-byte cryptographically random hex string.
+func GenerateToken() string {
+	b := make([]byte, 32)
+	if _, err := rand.Read(b); err != nil {
+		panic("crypto/rand unavailable: " + err.Error())
+	}
+	return hex.EncodeToString(b)
+}
 
 // Validate checks the parsed config for required fields and consistency.
 func Validate(cfg *Config) error {

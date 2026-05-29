@@ -2,7 +2,7 @@
 import { ref, onMounted, h, computed } from 'vue'
 import {
   NDataTable, NButton, NModal, NForm, NFormItem, NInput, NInputNumber,
-  NSelect, NSwitch, NSpace, NAlert, NTag, NPopconfirm, useMessage
+  NSelect, NSwitch, NSpace, NAlert, NTag, NPopconfirm, useMessage, NCard
 } from 'naive-ui'
 import type { DataTableColumns } from 'naive-ui'
 import { useTunnelsStore } from '@/stores/tunnels'
@@ -96,39 +96,58 @@ const stateType: Record<string, 'success' | 'default' | 'error'> = {
   error: 'error'
 }
 
+const remoteNameMap = computed(() => {
+  const m: Record<string, string> = {}
+  for (const r of remoteStore.remotes) m[r.id] = r.name
+  return m
+})
+
 const columns: DataTableColumns<TunnelStatus> = [
-  { title: 'ID', key: 'id', width: 120 },
-  { title: 'Name', key: 'name' },
-  { title: 'Dir', key: 'direction', width: 50 },
-  { title: 'Remote', key: 'remote_id', width: 120 },
+  { title: 'Name', key: 'name', ellipsis: { tooltip: true } },
+  {
+    title: 'Remote',
+    key: 'remote_id',
+    width: 140,
+    render: (row) => remoteNameMap.value[row.remote_id] || row.remote_id
+  },
+  {
+    title: 'Direction',
+    key: 'direction',
+    width: 80,
+    render: (row) => h(
+      'span',
+      { style: `font-family:monospace;font-size:11px;padding:2px 6px;border-radius:4px;background:${row.direction==='-L'?'#dbeafe':'#fce7f3'};color:${row.direction==='-L'?'#1d4ed8':'#9d174d'}` },
+      row.direction
+    )
+  },
   {
     title: 'Bind',
     key: 'bind',
-    render: (row) => `${row.bind_address}:${row.bind_port}`
+    render: (row) => h('span', { style: 'font-family:monospace;font-size:12px' }, `${row.bind_address}:${row.bind_port}`)
   },
   {
     title: 'Target',
     key: 'target',
-    render: (row) => `${row.target_host}:${row.target_port}`
+    render: (row) => h('span', { style: 'font-family:monospace;font-size:12px' }, `${row.target_host}:${row.target_port}`)
   },
   {
     title: 'State',
     key: 'state',
     width: 90,
-    render: (row) => h(NTag, { type: stateType[row.state] || 'default', size: 'small' }, { default: () => row.state })
+    render: (row) => h(NTag, { type: stateType[row.state] || 'default', size: 'small', round: true }, { default: () => row.state })
   },
   {
     title: 'Actions',
     key: 'actions',
-    width: 220,
-    render: (row) => h(NSpace, {}, {
+    width: 200,
+    render: (row) => h(NSpace, { size: 'small' }, {
       default: () => [
         row.state !== 'running'
           ? h(NButton, { size: 'tiny', type: 'success', onClick: () => doStart(row.id) }, { default: () => 'Start' })
-          : h(NButton, { size: 'tiny', onClick: () => doStop(row.id) }, { default: () => 'Stop' }),
-        h(NButton, { size: 'tiny', onClick: () => openEdit(row) }, { default: () => 'Edit' }),
+          : h(NButton, { size: 'tiny', type: 'warning', onClick: () => doStop(row.id) }, { default: () => 'Stop' }),
+        h(NButton, { size: 'tiny', secondary: true, onClick: () => openEdit(row) }, { default: () => 'Edit' }),
         h(NPopconfirm, { onPositiveClick: () => doDelete(row.id) }, {
-          trigger: () => h(NButton, { size: 'tiny', type: 'error' }, { default: () => 'Delete' }),
+          trigger: () => h(NButton, { size: 'tiny', type: 'error', ghost: true }, { default: () => 'Delete' }),
           default: () => 'Delete this tunnel?'
         })
       ]
@@ -144,23 +163,32 @@ onMounted(() => {
 
 <template>
   <div class="page">
-    <div class="toolbar">
-      <h2>Tunnels</h2>
-      <n-button type="primary" size="small" @click="openAdd">+ Add Tunnel</n-button>
-    </div>
-    <n-alert v-if="tunnelStore.error" type="error" :title="tunnelStore.error" style="margin: 12px" />
-    <div class="table-wrap">
-      <n-data-table
-        :columns="columns"
-        :data="tunnelStore.tunnels"
-        :loading="tunnelStore.loading"
-        :bordered="false"
-        size="small"
-      />
+    <div class="page-toolbar">
+      <span class="page-title">Tunnels</span>
+      <n-button type="primary" size="small" @click="openAdd">Add Tunnel</n-button>
     </div>
 
-    <n-modal v-model:show="showModal" :title="editingId ? 'Edit Tunnel' : 'Add Tunnel'" preset="dialog" style="width: 560px">
-      <n-form label-placement="left" label-width="120">
+    <div class="page-body">
+      <n-alert v-if="tunnelStore.error" type="error" :title="tunnelStore.error" style="margin-bottom:16px" />
+      <n-card :bordered="false" style="border-radius:10px;box-shadow:0 1px 6px rgba(0,0,0,0.06)">
+        <n-data-table
+          :columns="columns"
+          :data="tunnelStore.tunnels"
+          :loading="tunnelStore.loading"
+          :bordered="false"
+          size="small"
+          :row-key="(row: TunnelStatus) => row.id"
+        />
+      </n-card>
+    </div>
+
+    <n-modal
+      v-model:show="showModal"
+      :title="editingId ? 'Edit Tunnel' : 'Add Tunnel'"
+      preset="dialog"
+      style="width:560px"
+    >
+      <n-form label-placement="left" label-width="120" style="margin-top:8px">
         <n-form-item label="ID" v-if="!editingId">
           <n-input v-model:value="form.id" placeholder="e.g. db-forward" />
         </n-form-item>
@@ -177,13 +205,13 @@ onMounted(() => {
           <n-input v-model:value="form.bind_address" placeholder="127.0.0.1" />
         </n-form-item>
         <n-form-item label="Bind Port">
-          <n-input-number v-model:value="form.bind_port" :min="1" :max="65535" />
+          <n-input-number v-model:value="form.bind_port" :min="1" :max="65535" style="width:100%" />
         </n-form-item>
         <n-form-item label="Target Host">
           <n-input v-model:value="form.target_host" placeholder="localhost" />
         </n-form-item>
         <n-form-item label="Target Port">
-          <n-input-number v-model:value="form.target_port" :min="1" :max="65535" />
+          <n-input-number v-model:value="form.target_port" :min="1" :max="65535" style="width:100%" />
         </n-form-item>
         <n-form-item label="Auto Start">
           <n-switch v-model:value="form.auto_start" />
@@ -204,10 +232,22 @@ onMounted(() => {
 
 <style scoped>
 .page { display: flex; flex-direction: column; height: 100%; }
-.toolbar {
-  display: flex; align-items: center; justify-content: space-between;
-  padding: 12px 16px; border-bottom: 1px solid #e5e7eb;
+
+.page-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 20px;
+  background: #fff;
+  border-bottom: 1px solid #e2e8f0;
+  flex-shrink: 0;
 }
-.toolbar h2 { font-size: 16px; font-weight: 600; }
-.table-wrap { padding: 16px; flex: 1; overflow: auto; }
+
+.page-title { font-size: 14px; font-weight: 600; color: #1e293b; }
+
+.page-body {
+  flex: 1;
+  overflow: auto;
+  padding: 20px;
+}
 </style>

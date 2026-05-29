@@ -1,12 +1,14 @@
 package web
 
 import (
-"io/fs"
-"net/http"
-"path"
-"strings"
+	"bytes"
+	"encoding/json"
+	"io/fs"
+	"net/http"
+	"path"
+	"strings"
 
-"github.com/gin-gonic/gin"
+	"github.com/gin-gonic/gin"
 )
 
 // uiFS is wired up by embed_ui.go when compiled with -tags embedui.
@@ -23,60 +25,65 @@ const uiNotBuiltHTML = `<!doctype html>
 <p>The REST API is fully operational at <code>/api/*</code>.</p></body></html>`
 
 // Mount registers the SPA shell and history-mode fallback routes.
-func Mount(router *gin.Engine) {
-ui := handler()
-router.GET("/", gin.WrapH(ui))
-router.NoRoute(func(c *gin.Context) {
-if strings.HasPrefix(c.Request.URL.Path, "/api/") {
-c.Status(http.StatusNotFound)
-return
-}
-ui.ServeHTTP(c.Writer, c.Request)
-})
+func Mount(router *gin.Engine, token string) {
+	ui := handler(token)
+	router.GET("/", gin.WrapH(ui))
+	router.NoRoute(func(c *gin.Context) {
+		if strings.HasPrefix(c.Request.URL.Path, "/api/") {
+			c.Status(http.StatusNotFound)
+			return
+		}
+		ui.ServeHTTP(c.Writer, c.Request)
+	})
 }
 
-func handler() http.Handler {
-return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-if uiFS == nil {
-servePlaceholder(w, r)
-return
-}
-serveEmbedded(w, r, uiFS)
-})
+func handler(token string) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if uiFS == nil {
+			servePlaceholder(w, r)
+			return
+		}
+		serveEmbedded(w, r, uiFS, token)
+	})
 }
 
 func servePlaceholder(w http.ResponseWriter, r *http.Request) {
-clean := path.Clean("/" + r.URL.Path)
-if clean != "/" && path.Ext(clean) != "" {
-http.NotFound(w, r)
-return
-}
-w.Header().Set("Content-Type", "text/html; charset=utf-8")
-w.WriteHeader(http.StatusOK)
-_, _ = w.Write([]byte(uiNotBuiltHTML))
+	clean := path.Clean("/" + r.URL.Path)
+	if clean != "/" && path.Ext(clean) != "" {
+		http.NotFound(w, r)
+		return
+	}
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	w.WriteHeader(http.StatusOK)
+	_, _ = w.Write([]byte(uiNotBuiltHTML))
 }
 
-func serveEmbedded(w http.ResponseWriter, r *http.Request, sub fs.FS) {
-files := http.FileServer(http.FS(sub))
-name := strings.TrimPrefix(path.Clean("/"+r.URL.Path), "/")
-if name == "" || name == "." {
-name = "index.html"
-}
-if name != "index.html" {
-if info, err := fs.Stat(sub, name); err == nil && !info.IsDir() {
-files.ServeHTTP(w, r)
-return
-}
-if path.Ext(name) != "" {
-http.NotFound(w, r)
-return
-}
-}
-body, err := fs.ReadFile(sub, "index.html")
-if err != nil {
-body = []byte(uiNotBuiltHTML)
-}
-w.Header().Set("Content-Type", "text/html; charset=utf-8")
-w.WriteHeader(http.StatusOK)
-_, _ = w.Write(body)
+func serveEmbedded(w http.ResponseWriter, r *http.Request, sub fs.FS, token string) {
+	files := http.FileServer(http.FS(sub))
+	name := strings.TrimPrefix(path.Clean("/"+r.URL.Path), "/")
+	if name == "" || name == "." {
+		name = "index.html"
+	}
+	if name != "index.html" {
+		if info, err := fs.Stat(sub, name); err == nil && !info.IsDir() {
+			files.ServeHTTP(w, r)
+			return
+		}
+		if path.Ext(name) != "" {
+			http.NotFound(w, r)
+			return
+		}
+	}
+	body, err := fs.ReadFile(sub, "index.html")
+	if err != nil {
+		body = []byte(uiNotBuiltHTML)
+	}
+	if token != "" {
+		tokenJSON, _ := json.Marshal(token)
+		injection := append([]byte(`<script>window.__AUTH_TOKEN__=`), append(tokenJSON, []byte(`</script>`)...)...)
+		body = bytes.Replace(body, []byte("</head>"), append(injection, []byte("</head>")...), 1)
+	}
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	w.WriteHeader(http.StatusOK)
+	_, _ = w.Write(body)
 }

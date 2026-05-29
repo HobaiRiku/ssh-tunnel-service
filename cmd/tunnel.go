@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"strings"
 	"text/tabwriter"
 
 	"github.com/spf13/cobra"
@@ -229,8 +230,15 @@ func callHTTPAction(home, method, path string) error {
 		return err
 	}
 	_ = services.NewRuntime() // ensure import used
+
+	// Load the API token so the CLI can authenticate against the protected API.
+	token := ""
+	if raw, err := os.ReadFile(p.Token()); err == nil {
+		token = strings.TrimSpace(string(raw))
+	}
+
 	url := "http://" + cfg.App.HTTPListen + path
-	resp, err := httpDo(method, url)
+	resp, err := httpDoWithToken(method, url, token)
 	if err != nil {
 		return fmt.Errorf("could not reach service at %s: %w\n(is the service running?)", cfg.App.HTTPListen, err)
 	}

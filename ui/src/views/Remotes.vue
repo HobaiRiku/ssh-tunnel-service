@@ -2,7 +2,7 @@
 import { ref, onMounted, h } from 'vue'
 import {
   NDataTable, NButton, NModal, NForm, NFormItem, NInput, NInputNumber,
-  NSpace, NAlert, NPopconfirm, useMessage
+  NSpace, NAlert, NPopconfirm, useMessage, NCard
 } from 'naive-ui'
 import type { DataTableColumns } from 'naive-ui'
 import { useRemotesStore } from '@/stores/remotes'
@@ -52,21 +52,28 @@ async function doDelete(id: string) {
 }
 
 const columns: DataTableColumns<Remote> = [
-  { title: 'ID', key: 'id', width: 120 },
-  { title: 'Name', key: 'name' },
-  { title: 'Host', key: 'host' },
+  { title: 'Name', key: 'name', ellipsis: { tooltip: true } },
+  {
+    title: 'Host',
+    key: 'host',
+    render: (row) => h('span', { style: 'font-family:monospace;font-size:12px' }, row.host)
+  },
   { title: 'Port', key: 'port', width: 80 },
-  { title: 'User', key: 'user', width: 100 },
-  { title: 'Description', key: 'description' },
+  { title: 'User', key: 'user', width: 110 },
+  {
+    title: 'Description',
+    key: 'description',
+    ellipsis: { tooltip: true }
+  },
   {
     title: 'Actions',
     key: 'actions',
-    width: 160,
-    render: (row) => h(NSpace, {}, {
+    width: 140,
+    render: (row) => h(NSpace, { size: 'small' }, {
       default: () => [
-        h(NButton, { size: 'tiny', onClick: () => openEdit(row) }, { default: () => 'Edit' }),
+        h(NButton, { size: 'tiny', secondary: true, onClick: () => openEdit(row) }, { default: () => 'Edit' }),
         h(NPopconfirm, { onPositiveClick: () => doDelete(row.id) }, {
-          trigger: () => h(NButton, { size: 'tiny', type: 'error' }, { default: () => 'Delete' }),
+          trigger: () => h(NButton, { size: 'tiny', type: 'error', ghost: true }, { default: () => 'Delete' }),
           default: () => 'Delete this remote?'
         })
       ]
@@ -79,23 +86,32 @@ onMounted(() => store.fetchRemotes())
 
 <template>
   <div class="page">
-    <div class="toolbar">
-      <h2>Remotes</h2>
-      <n-button type="primary" size="small" @click="openAdd">+ Add Remote</n-button>
-    </div>
-    <n-alert v-if="store.error" type="error" :title="store.error" style="margin: 12px" />
-    <div class="table-wrap">
-      <n-data-table
-        :columns="columns"
-        :data="store.remotes"
-        :loading="store.loading"
-        :bordered="false"
-        size="small"
-      />
+    <div class="page-toolbar">
+      <span class="page-title">Remotes</span>
+      <n-button type="primary" size="small" @click="openAdd">Add Remote</n-button>
     </div>
 
-    <n-modal v-model:show="showModal" :title="editingId ? 'Edit Remote' : 'Add Remote'" preset="dialog" style="width: 520px">
-      <n-form label-placement="left" label-width="110">
+    <div class="page-body">
+      <n-alert v-if="store.error" type="error" :title="store.error" style="margin-bottom:16px" />
+      <n-card :bordered="false" style="border-radius:10px;box-shadow:0 1px 6px rgba(0,0,0,0.06)">
+        <n-data-table
+          :columns="columns"
+          :data="store.remotes"
+          :loading="store.loading"
+          :bordered="false"
+          size="small"
+          :row-key="(row: Remote) => row.id"
+        />
+      </n-card>
+    </div>
+
+    <n-modal
+      v-model:show="showModal"
+      :title="editingId ? 'Edit Remote' : 'Add Remote'"
+      preset="dialog"
+      style="width:520px"
+    >
+      <n-form label-placement="left" label-width="110" style="margin-top:8px">
         <n-form-item label="ID" v-if="!editingId">
           <n-input v-model:value="form.id" placeholder="e.g. prod-server" />
         </n-form-item>
@@ -106,7 +122,7 @@ onMounted(() => store.fetchRemotes())
           <n-input v-model:value="form.host" placeholder="192.168.1.1" />
         </n-form-item>
         <n-form-item label="Port">
-          <n-input-number v-model:value="form.port" :min="1" :max="65535" />
+          <n-input-number v-model:value="form.port" :min="1" :max="65535" style="width:100%" />
         </n-form-item>
         <n-form-item label="User">
           <n-input v-model:value="form.user" placeholder="ubuntu" />
@@ -127,10 +143,22 @@ onMounted(() => store.fetchRemotes())
 
 <style scoped>
 .page { display: flex; flex-direction: column; height: 100%; }
-.toolbar {
-  display: flex; align-items: center; justify-content: space-between;
-  padding: 12px 16px; border-bottom: 1px solid #e5e7eb;
+
+.page-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 20px;
+  background: #fff;
+  border-bottom: 1px solid #e2e8f0;
+  flex-shrink: 0;
 }
-.toolbar h2 { font-size: 16px; font-weight: 600; }
-.table-wrap { padding: 16px; flex: 1; overflow: auto; }
+
+.page-title { font-size: 14px; font-weight: 600; color: #1e293b; }
+
+.page-body {
+  flex: 1;
+  overflow: auto;
+  padding: 20px;
+}
 </style>
