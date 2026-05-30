@@ -6,7 +6,7 @@ import {
 } from 'naive-ui'
 import type { DataTableColumns } from 'naive-ui'
 import { useRemotesStore } from '@/stores/remotes'
-import type { Remote } from '@/api/client'
+import { getErrorMessage, type Remote } from '@/api/client'
 
 const store = useRemotesStore()
 const message = useMessage()
@@ -37,8 +37,8 @@ async function submitForm() {
       message.success('Remote added')
     }
     showModal.value = false
-  } catch (e: any) {
-    message.error(e.message)
+  } catch (error: unknown) {
+    message.error(getErrorMessage(error))
   }
 }
 
@@ -46,8 +46,8 @@ async function doDelete(id: string) {
   try {
     await store.deleteRemote(id)
     message.success('Remote deleted')
-  } catch (e: any) {
-    message.error(e.message)
+  } catch (error: unknown) {
+    message.error(getErrorMessage(error))
   }
 }
 

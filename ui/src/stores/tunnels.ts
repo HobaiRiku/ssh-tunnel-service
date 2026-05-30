@@ -1,6 +1,6 @@
 import { defineStore } from 'pinia'
 import { ref } from 'vue'
-import { api, type TunnelStatus, type Tunnel } from '@/api/client'
+import { api, getErrorMessage, type TunnelStatus, type Tunnel } from '@/api/client'
 
 export const useTunnelsStore = defineStore('tunnels', () => {
   const tunnels = ref<TunnelStatus[]>([])
@@ -12,8 +12,8 @@ export const useTunnelsStore = defineStore('tunnels', () => {
     error.value = null
     try {
       tunnels.value = await api.listTunnels()
-    } catch (e: any) {
-      error.value = e.message
+    } catch (caughtError: unknown) {
+      error.value = getErrorMessage(caughtError)
     } finally {
       loading.value = false
     }

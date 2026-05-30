@@ -19,8 +19,8 @@ import {
   NText,
   useMessage,
 } from 'naive-ui'
-import type { DataTableColumns } from 'naive-ui'
-import { api, type Tunnel, type TunnelStatus } from '@/api/client'
+import type { DataTableColumns, SelectOption } from 'naive-ui'
+import { api, getErrorMessage, type Tunnel, type TunnelStatus } from '@/api/client'
 import { useRemotesStore } from '@/stores/remotes'
 import { useTunnelsStore } from '@/stores/tunnels'
 import TunnelTopologyView from '@/components/TunnelTopologyView.vue'
@@ -38,26 +38,49 @@ const commandValue = ref('')
 const editingId = ref<string | null>(null)
 const viewMode = ref<'topology' | 'table'>('topology')
 const activeTunnel = ref<TunnelStatus | null>(null)
-const form = ref<Tunnel>({
-  id: '',
-  name: '',
-  remote_id: '',
-  direction: '-L',
-  bind_address: '127.0.0.1',
-  bind_port: 0,
-  target_host: '',
-  target_port: 0,
-  ssh_options: [],
-  auto_start: false,
-  description: '',
-})
+
+function createDefaultTunnel(): Tunnel {
+  return {
+    id: '',
+    name: '',
+    remote_id: '',
+    direction: '-L',
+    bind_address: '127.0.0.1',
+    bind_port: 0,
+    target_host: '',
+    target_port: 0,
+    ssh_options: [],
+    auto_start: false,
+    description: '',
+  }
+}
+
+function toTunnelForm(tunnel: Tunnel | TunnelStatus): Tunnel {
+  return {
+    id: tunnel.id,
+    name: tunnel.name,
+    remote_id: tunnel.remote_id,
+    direction: tunnel.direction,
+    bind_address: tunnel.bind_address,
+    bind_port: tunnel.bind_port,
+    target_host: tunnel.target_host,
+    target_port: tunnel.target_port,
+    ssh_options: [...tunnel.ssh_options],
+    auto_start: tunnel.auto_start,
+    description: tunnel.description,
+  }
+}
+
+const form = ref<Tunnel>(createDefaultTunnel())
 
 const remoteOptions = computed(() =>
   remoteStore.remotes.map((remote) => ({ label: `${remote.name} (${remote.host})`, value: remote.id })),
 )
 
+type TunnelDirection = Tunnel['direction']
+
 type DirectionMeta = {
-  value: '-L' | '-R'
+  value: TunnelDirection
   code: string
   title: string
   summary: string
@@ -65,7 +88,17 @@ type DirectionMeta = {
   targetMeaning: string
 }
 
-const directionMeta: Record<'-L' | '-R', DirectionMeta> = {
+type DirectionMetaMap = {
+  [direction in TunnelDirection]: DirectionMeta
+}
+
+type DirectionOption = SelectOption & {
+  value: TunnelDirection
+  label: string
+  meta: DirectionMeta
+}
+
+const directionMeta: DirectionMetaMap = {
   '-L': {
     value: '-L',
     code: '-L',
@@ -84,15 +117,24 @@ const directionMeta: Record<'-L' | '-R', DirectionMeta> = {
   },
 }
 
-const dirOptions = [directionMeta['-L'], directionMeta['-R']].map((meta) => ({
+const dirOptions: DirectionOption[] = [directionMeta['-L'], directionMeta['-R']].map((meta) => ({
   value: meta.value,
   label: `${meta.code}  ${meta.title} — ${meta.summary}`,
   meta,
 }))
 
-function renderDirectionLabel(option: Record<string, unknown>) {
-  const meta = option.meta as DirectionMeta | undefined
-  if (!meta) return String(option.label ?? '')
+function isDirectionOption(option: SelectOption): option is DirectionOption {
+  const meta = option.meta
+  return typeof option.label === 'string'
+    && (option.value === '-L' || option.value === '-R')
+    && typeof meta === 'object'
+    && meta !== null
+    && 'summary' in meta
+}
+
+function renderDirectionLabel(option: SelectOption) {
+  if (!isDirectionOption(option)) return String(option.label ?? '')
+
   return h(
     'div',
     { style: 'display:flex;flex-direction:column;gap:2px;line-height:1.4;padding:2px 0' },
@@ -100,12 +142,12 @@ function renderDirectionLabel(option: Record<string, unknown>) {
       h(
         'div',
         { style: 'font-family:monospace;font-weight:600;font-size:13px;color:#1e293b' },
-        `${meta.code}  ${meta.title}`,
+        `${option.meta.code}  ${option.meta.title}`,
       ),
       h(
         'div',
         { style: 'font-size:12px;color:#64748b;white-space:normal' },
-        meta.summary,
+        option.meta.summary,
       ),
     ],
   )
@@ -113,32 +155,16 @@ function renderDirectionLabel(option: Record<string, unknown>) {
 
 const selectedDirection = computed<DirectionMeta>(() => directionMeta[form.value.direction] ?? directionMeta['-L'])
 
-const stateType: Record<string, 'success' | 'default' | 'error'> = {
+const stateType: { [state in TunnelStatus['state']]: 'success' | 'default' | 'error' } = {
   running: 'success',
   stopped: 'default',
   error: 'error',
 }
 
-const remoteNameMap = computed(() => {
-  const names: Record<string, string> = {}
-  for (const remote of remoteStore.remotes) names[remote.id] = remote.name
-  return names
-})
+const remoteNameMap = computed(() => new Map(remoteStore.remotes.map((remote) => [remote.id, remote.name] as const)))
 
 function resetForm() {
-  form.value = {
-    id: '',
-    name: '',
-    remote_id: '',
-    direction: '-L',
-    bind_address: '127.0.0.1',
-    bind_port: 0,
-    target_host: '',
-    target_port: 0,
-    ssh_options: [],
-    auto_start: false,
-    description: '',
-  }
+  form.value = createDefaultTunnel()
 }
 
 function openAdd() {
@@ -149,7 +175,7 @@ function openAdd() {
 
 function openEdit(row: TunnelStatus) {
   editingId.value = row.id
-  form.value = { ...row }
+  form.value = toTunnelForm(row)
   showModal.value = true
 }
 
@@ -167,8 +193,8 @@ async function submitForm() {
       message.success('Tunnel added')
     }
     showModal.value = false
-  } catch (error: any) {
-    message.error(error.message)
+  } catch (error: unknown) {
+    message.error(getErrorMessage(error))
   }
 }
 
@@ -176,8 +202,8 @@ async function doDelete(id: string) {
   try {
     await tunnelStore.deleteTunnel(id)
     message.success('Tunnel deleted')
-  } catch (error: any) {
-    message.error(error.message)
+  } catch (error: unknown) {
+    message.error(getErrorMessage(error))
   }
 }
 
@@ -185,8 +211,8 @@ async function doStart(id: string) {
   try {
     await tunnelStore.startTunnel(id)
     message.info('Start requested')
-  } catch (error: any) {
-    message.error(error.message)
+  } catch (error: unknown) {
+    message.error(getErrorMessage(error))
   }
 }
 
@@ -194,8 +220,8 @@ async function doStop(id: string) {
   try {
     await tunnelStore.stopTunnel(id)
     message.success('Tunnel stopped')
-  } catch (error: any) {
-    message.error(error.message)
+  } catch (error: unknown) {
+    message.error(getErrorMessage(error))
   }
 }
 
@@ -229,11 +255,11 @@ function actionEdit() {
   openEdit(tunnel)
 }
 
-function actionCommand() {
+async function actionCommand() {
   if (!activeTunnel.value) return
   const tunnel = activeTunnel.value
   closeActions()
-  openCommand(tunnel)
+  await openCommand(tunnel)
 }
 
 async function actionDelete() {
@@ -251,9 +277,9 @@ async function openCommand(row: TunnelStatus) {
   try {
     const preview = await api.getTunnelCommand(row.id)
     commandValue.value = preview.command
-  } catch (error: any) {
+  } catch (error: unknown) {
     showCommandModal.value = false
-    message.error(error.message)
+    message.error(getErrorMessage(error))
   } finally {
     commandLoading.value = false
   }
@@ -265,7 +291,7 @@ const columns: DataTableColumns<TunnelStatus> = [
     title: 'Remote',
     key: 'remote_id',
     width: 140,
-    render: (row) => remoteNameMap.value[row.remote_id] || row.remote_id,
+    render: (row) => remoteNameMap.value.get(row.remote_id) ?? row.remote_id,
   },
   {
     title: 'Direction',
@@ -294,7 +320,7 @@ const columns: DataTableColumns<TunnelStatus> = [
     title: 'State',
     key: 'state',
     width: 90,
-    render: (row) => h(NTag, { type: stateType[row.state] || 'default', size: 'small', round: true }, { default: () => row.state }),
+    render: (row) => h(NTag, { type: stateType[row.state], size: 'small', round: true }, { default: () => row.state }),
   },
   {
     title: 'Actions',
@@ -304,10 +330,10 @@ const columns: DataTableColumns<TunnelStatus> = [
       h(NSpace, { size: 'small' }, {
         default: () => [
           row.state !== 'running'
-            ? h(NButton, { size: 'tiny', type: 'success', onClick: () => doStart(row.id) }, { default: () => 'Start' })
-            : h(NButton, { size: 'tiny', type: 'warning', onClick: () => doStop(row.id) }, { default: () => 'Stop' }),
+            ? h(NButton, { size: 'tiny', type: 'success', onClick: () => { void doStart(row.id) } }, { default: () => 'Start' })
+            : h(NButton, { size: 'tiny', type: 'warning', onClick: () => { void doStop(row.id) } }, { default: () => 'Stop' }),
           h(NButton, { size: 'tiny', secondary: true, onClick: () => openEdit(row) }, { default: () => 'Edit' }),
-          h(NButton, { size: 'tiny', tertiary: true, onClick: () => openCommand(row) }, { default: () => 'SSH' }),
+          h(NButton, { size: 'tiny', tertiary: true, onClick: () => { void openCommand(row) } }, { default: () => 'SSH' }),
           h(
             NPopconfirm,
             { onPositiveClick: () => doDelete(row.id) },
@@ -431,7 +457,7 @@ onMounted(refresh)
       <div v-if="activeTunnel" class="action-summary">
         <div class="action-summary-row">
           <span class="action-summary-label">Remote</span>
-          <span class="action-summary-value">{{ remoteNameMap[activeTunnel.remote_id] || activeTunnel.remote_id }}</span>
+          <span class="action-summary-value">{{ remoteNameMap.get(activeTunnel.remote_id) ?? activeTunnel.remote_id }}</span>
         </div>
         <div class="action-summary-row">
           <span class="action-summary-label">Direction</span>
@@ -450,7 +476,7 @@ onMounted(refresh)
         <div class="action-summary-row">
           <span class="action-summary-label">State</span>
           <span class="action-summary-value">
-            <n-tag :type="stateType[activeTunnel.state] || 'default'" size="small" round>{{ activeTunnel.state }}</n-tag>
+            <n-tag :type="stateType[activeTunnel.state]" size="small" round>{{ activeTunnel.state }}</n-tag>
             <span v-if="activeTunnel.error" class="action-summary-error">{{ activeTunnel.error }}</span>
           </span>
         </div>

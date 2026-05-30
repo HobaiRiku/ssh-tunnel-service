@@ -123,23 +123,28 @@ const flowEdges = computed<Edge[]>(() => {
   }))
 })
 
-function refit() {
-  nextTick(() => {
-    setTimeout(() => {
-      if (flowNodes.value.length > 0) {
-        fitView({ padding: 0.15, duration: 200 })
-      }
-    }, 60)
+async function refit() {
+  await nextTick()
+  await new Promise<void>((resolve) => {
+    window.setTimeout(resolve, 60)
   })
+
+  if (flowNodes.value.length > 0) {
+    await fitView({ padding: 0.15, duration: 200 })
+  }
 }
 
-watch(() => flowNodes.value.length, refit)
+watch(() => flowNodes.value.length, () => {
+  void refit()
+})
 watch(() => props.loading, (loading) => {
   if (!loading) {
-    refit()
+    void refit()
   }
 })
-onMounted(refit)
+onMounted(() => {
+  void refit()
+})
 </script>
 
 <template>

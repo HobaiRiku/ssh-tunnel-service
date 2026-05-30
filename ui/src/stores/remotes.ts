@@ -1,6 +1,6 @@
 import { defineStore } from 'pinia'
 import { ref } from 'vue'
-import { api, type Remote } from '@/api/client'
+import { api, getErrorMessage, type Remote } from '@/api/client'
 
 export const useRemotesStore = defineStore('remotes', () => {
   const remotes = ref<Remote[]>([])
@@ -12,8 +12,8 @@ export const useRemotesStore = defineStore('remotes', () => {
     error.value = null
     try {
       remotes.value = await api.listRemotes()
-    } catch (e: any) {
-      error.value = e.message
+    } catch (caughtError: unknown) {
+      error.value = getErrorMessage(caughtError)
     } finally {
       loading.value = false
     }

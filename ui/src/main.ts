@@ -5,10 +5,14 @@ import App from './App.vue'
 import router from './router'
 import { initAuth } from './api/client'
 
-initAuth().then(() => {
+async function bootstrap() {
+  await initAuth()
+
   const app = createApp(App)
   app.use(createPinia())
   app.use(router)
   app.use(naive)
   app.mount('#app')
-})
+}
+
+void bootstrap()
