@@ -52,7 +52,7 @@ func (r *Registry) GetRemote(id string) (config.Remote, error) {
 			return remote, nil
 		}
 	}
-	return config.Remote{}, fmt.Errorf("remote %q not found", id)
+	return config.Remote{}, fmt.Errorf("remote %q: %w", id, ErrNotFound)
 }
 
 func (r *Registry) AddRemote(remote config.Remote) error {
@@ -79,7 +79,7 @@ func (r *Registry) UpdateRemote(id string, update config.Remote) error {
 			return r.persist(next)
 		}
 	}
-	return fmt.Errorf("remote %q not found", id)
+	return fmt.Errorf("remote %q: %w", id, ErrNotFound)
 }
 
 func (r *Registry) DeleteRemote(id string) error {
@@ -97,7 +97,7 @@ func (r *Registry) DeleteRemote(id string) error {
 			return r.persist(next)
 		}
 	}
-	return fmt.Errorf("remote %q not found", id)
+	return fmt.Errorf("remote %q: %w", id, ErrNotFound)
 }
 
 // ── Tunnels ───────────────────────────────────────────────────────────────────
@@ -122,7 +122,7 @@ func (r *Registry) GetTunnel(id string) (TunnelStatus, error) {
 			return TunnelStatus{Tunnel: t, State: state, PID: pid, Error: errMsg}, nil
 		}
 	}
-	return TunnelStatus{}, fmt.Errorf("tunnel %q not found", id)
+	return TunnelStatus{}, fmt.Errorf("tunnel %q: %w", id, ErrNotFound)
 }
 
 func (r *Registry) AddTunnel(t config.Tunnel) error {
@@ -158,7 +158,7 @@ func (r *Registry) UpdateTunnel(id string, update config.Tunnel) error {
 			return r.persist(next)
 		}
 	}
-	return fmt.Errorf("tunnel %q not found", id)
+	return fmt.Errorf("tunnel %q: %w", id, ErrNotFound)
 }
 
 func (r *Registry) DeleteTunnel(id string) error {
@@ -174,7 +174,7 @@ func (r *Registry) DeleteTunnel(id string) error {
 			return r.persist(next)
 		}
 	}
-	return fmt.Errorf("tunnel %q not found", id)
+	return fmt.Errorf("tunnel %q: %w", id, ErrNotFound)
 }
 
 func requireRemote(cfg *config.Config, id string) error {
@@ -183,7 +183,7 @@ func requireRemote(cfg *config.Config, id string) error {
 			return nil
 		}
 	}
-	return fmt.Errorf("remote %q not found", id)
+	return fmt.Errorf("remote %q: %w", id, ErrNotFound)
 }
 
 // persist writes the current in-memory config back to disk atomically.

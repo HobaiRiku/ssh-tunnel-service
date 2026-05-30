@@ -115,7 +115,7 @@ func updateRemote(reg *services.Registry) gin.HandlerFunc {
 			return
 		}
 		if err := reg.UpdateRemote(c.Param("id"), input); err != nil {
-			if strings.Contains(err.Error(), "not found") {
+			if errors.Is(err, services.ErrNotFound) {
 				c.JSON(http.StatusNotFound, apiError(err))
 				return
 			}
@@ -129,7 +129,7 @@ func updateRemote(reg *services.Registry) gin.HandlerFunc {
 func deleteRemote(reg *services.Registry) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		if err := reg.DeleteRemote(c.Param("id")); err != nil {
-			if strings.Contains(err.Error(), "not found") {
+			if errors.Is(err, services.ErrNotFound) {
 				c.JSON(http.StatusNotFound, apiError(err))
 				return
 			}
@@ -161,7 +161,7 @@ func tunnelCommand(mgr *services.Manager) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		preview, err := mgr.Command(c.Param("id"))
 		if err != nil {
-			if strings.Contains(err.Error(), "not found") {
+			if errors.Is(err, services.ErrNotFound) {
 				c.JSON(http.StatusNotFound, apiError(err))
 				return
 			}
@@ -195,7 +195,7 @@ func updateTunnel(reg *services.Registry) gin.HandlerFunc {
 			return
 		}
 		if err := reg.UpdateTunnel(c.Param("id"), input); err != nil {
-			if strings.Contains(err.Error(), "not found") {
+			if errors.Is(err, services.ErrNotFound) {
 				c.JSON(http.StatusNotFound, apiError(err))
 				return
 			}
@@ -209,7 +209,7 @@ func updateTunnel(reg *services.Registry) gin.HandlerFunc {
 func deleteTunnel(reg *services.Registry) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		if err := reg.DeleteTunnel(c.Param("id")); err != nil {
-			if strings.Contains(err.Error(), "not found") {
+			if errors.Is(err, services.ErrNotFound) {
 				c.JSON(http.StatusNotFound, apiError(err))
 				return
 			}

@@ -2,7 +2,15 @@
 // and the tunnel manager. Keeping state here ensures CLI and Web UI cannot drift.
 package services
 
-import "github.com/HobaiRiku/ssh-tunnel-service/internal/config"
+import (
+	"errors"
+
+	"github.com/HobaiRiku/ssh-tunnel-service/internal/config"
+)
+
+// ErrNotFound is returned by registry lookups when the requested resource does
+// not exist. Callers should use errors.Is to check for this condition.
+var ErrNotFound = errors.New("not found")
 
 // TunnelState represents the runtime lifecycle state of a tunnel.
 type TunnelState string

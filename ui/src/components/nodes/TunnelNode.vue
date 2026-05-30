@@ -48,12 +48,12 @@ const stateStyle = computed(() => {
       <div class="target">→ {{ data.targetHost }}:{{ data.targetPort }}</div>
     </div>
     <div class="actions">
-      <button class="action primary" @click.stop="data.state === 'running' ? data.onStop?.() : data.onStart?.()">
+      <button type="button" class="action primary" @click.stop="data.state === 'running' ? data.onStop?.() : data.onStart?.()">
         {{ data.state === 'running' ? 'Stop' : 'Start' }}
       </button>
-      <button class="action" @click.stop="data.onEdit?.()">Edit</button>
-      <button class="action" @click.stop="data.onCommand?.()">SSH</button>
-      <button class="action danger" @click.stop="data.onDelete?.()">Delete</button>
+      <button type="button" class="action" @click.stop="data.onEdit?.()">Edit</button>
+      <button type="button" class="action" @click.stop="data.onCommand?.()">SSH</button>
+      <button type="button" class="action danger" @click.stop="data.onDelete?.()">Delete</button>
     </div>
     <Handle type="source" :position="Position.Right" class="handle-right" />
   </div>

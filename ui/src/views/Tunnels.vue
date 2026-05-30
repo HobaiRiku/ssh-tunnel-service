@@ -130,7 +130,7 @@ async function doDelete(id: string) {
 async function doStart(id: string) {
   try {
     await tunnelStore.startTunnel(id)
-    message.success('Tunnel started')
+    message.info('Start requested')
   } catch (error: any) {
     message.error(error.message)
   }
@@ -319,7 +319,7 @@ onMounted(refresh)
       style="width: 720px"
     >
       <n-space vertical :size="12" style="margin-top: 8px">
-        <n-text depth="3">This is the exact ssh command shape the service will launch for the selected tunnel.</n-text>
+        <n-text depth="3">SSH arguments the service will pass to <code>ssh</code> for this tunnel (POSIX shell rendering — may not be directly runnable on non-POSIX shells).</n-text>
         <n-text v-if="commandLoading" depth="3">Loading command…</n-text>
         <n-input v-else :value="commandValue" type="textarea" :rows="6" readonly />
       </n-space>
