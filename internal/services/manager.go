@@ -241,7 +241,7 @@ func diagnoseSSHFailure(stderr string) string {
 	}
 }
 
-var safeShellArg = regexp.MustCompile(`^[A-Za-z0-9_@%+=:,./-]+$`)
+var shellSafeArgPattern = regexp.MustCompile(`^[A-Za-z0-9_@%+=:,./-]+$`)
 
 func shellCommand(bin string, args []string) string {
 	quoted := make([]string, 0, len(args)+1)
@@ -256,7 +256,7 @@ func shellQuote(arg string) string {
 	if arg == "" {
 		return "''"
 	}
-	if safeShellArg.MatchString(arg) {
+	if shellSafeArgPattern.MatchString(arg) {
 		return arg
 	}
 	return "'" + strings.ReplaceAll(arg, "'", `'\''`) + "'"

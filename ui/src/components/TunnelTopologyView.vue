@@ -36,7 +36,10 @@ const nodeTypes = {
 }
 
 const GROUP_HEADER_H = 52
-const TUNNEL_SLOT_H = 116
+const TUNNEL_HEADER_H = 32
+const TUNNEL_INFO_H = 36
+const TUNNEL_ACTIONS_H = 36
+const TUNNEL_SLOT_H = TUNNEL_HEADER_H + TUNNEL_INFO_H + TUNNEL_ACTIONS_H + 12
 const GROUP_PAD_TOP = 12
 const GROUP_PAD_BOT = 12
 const GROUP_W = 252
