@@ -3,7 +3,7 @@ package cmd
 import (
 	"net/http"
 
-	"github.com/HobaiRiku/ssh-tunnel-service/internal/paths"
+	"ssh-tunnel-service/internal/paths"
 )
 
 func httpDo(method, url string) (*http.Response, error) {

@@ -11,8 +11,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/HobaiRiku/ssh-tunnel-service/internal/config"
-	"github.com/HobaiRiku/ssh-tunnel-service/internal/paths"
+	"ssh-tunnel-service/internal/config"
+	"ssh-tunnel-service/internal/paths"
 )
 
 func TestSSHHostKeyArgsAcceptNew(t *testing.T) {
@@ -62,60 +62,20 @@ func TestEnsureKnownHostsFileCreatesFile(t *testing.T) {
 }
 
 func TestDiagnoseSSHFailure(t *testing.T) {
-	// Fixtures are real OpenSSH stderr output for each failure class.
 	cases := []struct {
 		name   string
 		stderr string
 		want   string
 	}{
-		{
-			name:   "host key verification",
-			stderr: "Host key verification failed.",
-			want:   "host key verification failed",
-		},
-		{
-			name: "host key changed",
-			stderr: "@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@\n" +
-				"@    WARNING: REMOTE HOST IDENTIFICATION HAS CHANGED!     @\n" +
-				"Someone could be eavesdropping on you right now (man-in-the-middle attack)!\n" +
-				"Offending ECDSA key in /home/user/.ssh/known_hosts:3",
-			want: "remote host key changed",
-		},
-		{
-			name:   "password required",
-			stderr: "ubuntu@ssh.example.com: Permission denied (publickey,password).",
-			want:   "requires password/keyboard-interactive auth",
-		},
-		{
-			name:   "keyboard-interactive required",
-			stderr: "ubuntu@ssh.example.com: Permission denied (keyboard-interactive).",
-			want:   "requires password/keyboard-interactive auth",
-		},
-		{
-			name:   "publickey only denied",
-			stderr: "ubuntu@ssh.example.com: Permission denied (publickey).",
-			want:   "verify keys, agent access, and remote user permissions",
-		},
-		{
-			name:   "unresolved hostname",
-			stderr: "ssh: Could not resolve hostname ssh.example.com: Name or service not known",
-			want:   "hostname could not be resolved",
-		},
-		{
-			name:   "connection refused",
-			stderr: "ssh: connect to host ssh.example.com port 22: Connection refused",
-			want:   "connection refused",
-		},
-		{
-			name:   "connection timed out",
-			stderr: "ssh: connect to host ssh.example.com port 22: Connection timed out",
-			want:   "network connection failed",
-		},
-		{
-			name:   "no diagnostic output",
-			stderr: "",
-			want:   "ssh exited without diagnostic output",
-		},
+		{name: "host key verification", stderr: "Host key verification failed.", want: "host key verification failed"},
+		{name: "host key changed", stderr: "@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@\n@    WARNING: REMOTE HOST IDENTIFICATION HAS CHANGED!     @\nSomeone could be eavesdropping on you right now (man-in-the-middle attack)!\nOffending ECDSA key in /home/user/.ssh/known_hosts:3", want: "remote host key changed"},
+		{name: "password required", stderr: "ubuntu@ssh.example.com: Permission denied (publickey,password).", want: "requires password/keyboard-interactive auth"},
+		{name: "keyboard-interactive required", stderr: "ubuntu@ssh.example.com: Permission denied (keyboard-interactive).", want: "requires password/keyboard-interactive auth"},
+		{name: "publickey only denied", stderr: "ubuntu@ssh.example.com: Permission denied (publickey).", want: "verify keys, agent access, and remote user permissions"},
+		{name: "unresolved hostname", stderr: "ssh: Could not resolve hostname ssh.example.com: Name or service not known", want: "hostname could not be resolved"},
+		{name: "connection refused", stderr: "ssh: connect to host ssh.example.com port 22: Connection refused", want: "connection refused"},
+		{name: "connection timed out", stderr: "ssh: connect to host ssh.example.com port 22: Connection timed out", want: "network connection failed"},
+		{name: "no diagnostic output", stderr: "", want: "ssh exited without diagnostic output"},
 	}
 
 	for _, tc := range cases {
@@ -130,23 +90,14 @@ func TestDiagnoseSSHFailure(t *testing.T) {
 
 func TestCommandIncludesManagedTunnelOptions(t *testing.T) {
 	cfg := &config.Config{
-		App: config.AppConfig{
-			SSHHostKeyPolicy: config.SSHHostKeyPolicyAcceptNew,
-			SSHKnownHosts:    "/tmp/known_hosts",
-		},
-		Remotes: []config.Remote{{
-			ID: "remote-a", Host: "ssh.example.com", Port: 2222, User: "ubuntu",
-		}},
-		Tunnels: []config.Tunnel{{
-			ID: "tunnel-a", RemoteID: "remote-a", Direction: config.DirectionLocal,
-			BindAddress: "127.0.0.1", BindPort: 15432,
-			TargetHost: "db.internal", TargetPort: 5432,
-			SSHOptions: []string{"-o", "ServerAliveInterval=30"},
-		}},
+		App:     config.AppConfig{SSHHostKeyPolicy: config.SSHHostKeyPolicyAcceptNew, SSHKnownHosts: "/tmp/known_hosts"},
+		Keys:    []config.SSHKey{{ID: "deploy-key", Name: "Deploy", File: "deploy-key"}},
+		Remotes: []config.Remote{{ID: "remote-a", Host: "ssh.example.com", Port: 2222, User: "ubuntu", KeyID: "deploy-key"}},
+		Tunnels: []config.Tunnel{{ID: "tunnel-a", RemoteID: "remote-a", Direction: config.DirectionLocal, BindAddress: "127.0.0.1", BindPort: 15432, TargetHost: "db.internal", TargetPort: 5432, SSHOptions: []string{"-o", "ServerAliveInterval=30"}}},
 	}
 
 	rt := NewRuntime()
-	reg := New(cfg, paths.Paths{}, rt)
+	reg := New(cfg, paths.Paths{Home: "/tmp/home"}, rt)
 	mgr := NewManager(reg, rt, slog.New(slog.NewTextHandler(io.Discard, nil)))
 
 	preview, err := mgr.Command("tunnel-a")
@@ -163,6 +114,8 @@ func TestCommandIncludesManagedTunnelOptions(t *testing.T) {
 		"-o ExitOnForwardFailure=yes",
 		"-o StrictHostKeyChecking=accept-new",
 		"-o UserKnownHostsFile=/tmp/known_hosts",
+		"-i /tmp/home/keys/deploy-key",
+		"-o IdentitiesOnly=yes",
 		"-L 127.0.0.1:15432:db.internal:5432",
 		"-o ServerAliveInterval=30",
 		"-p 2222 ubuntu@ssh.example.com",
@@ -176,10 +129,6 @@ func TestCommandIncludesManagedTunnelOptions(t *testing.T) {
 	}
 }
 
-// TestStartMarksPasswordRemoteAsError verifies the end-to-end behaviour the
-// service depends on: when a remote only offers interactive (password) auth,
-// ssh exits non-interactively and the tunnel is recorded as an error instead
-// of hanging. A fake ssh on PATH reproduces OpenSSH's real failure output.
 func TestStartMarksPasswordRemoteAsError(t *testing.T) {
 	if runtime.GOOS == "windows" {
 		t.Skip("fake ssh shell script is POSIX-only")
@@ -195,20 +144,24 @@ func TestStartMarksPasswordRemoteAsError(t *testing.T) {
 	}
 	t.Setenv("PATH", binDir+string(os.PathListSeparator)+os.Getenv("PATH"))
 
+	home := t.TempDir()
+	keyPath := filepath.Join(home, "keys")
+	if err := os.MkdirAll(keyPath, 0o700); err != nil {
+		t.Fatalf("mkdir keys: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(keyPath, "deploy-key"), []byte("-----BEGIN OPENSSH PRIVATE KEY-----\nkey\n-----END OPENSSH PRIVATE KEY-----\n"), 0o600); err != nil {
+		t.Fatalf("write managed key: %v", err)
+	}
+
 	cfg := &config.Config{
-		App: config.AppConfig{SSHHostKeyPolicy: config.SSHHostKeyPolicyInsecure},
-		Remotes: []config.Remote{{
-			ID: "remote-a", Host: "ssh.example.com", Port: 22, User: "ubuntu",
-		}},
-		Tunnels: []config.Tunnel{{
-			ID: "tunnel-a", RemoteID: "remote-a", Direction: config.DirectionLocal,
-			BindAddress: "127.0.0.1", BindPort: 15432,
-			TargetHost: "127.0.0.1", TargetPort: 5432,
-		}},
+		App:     config.AppConfig{SSHHostKeyPolicy: config.SSHHostKeyPolicyInsecure},
+		Keys:    []config.SSHKey{{ID: "deploy-key", Name: "Deploy", File: "deploy-key"}},
+		Remotes: []config.Remote{{ID: "remote-a", Host: "ssh.example.com", Port: 22, User: "ubuntu", KeyID: "deploy-key"}},
+		Tunnels: []config.Tunnel{{ID: "tunnel-a", RemoteID: "remote-a", Direction: config.DirectionLocal, BindAddress: "127.0.0.1", BindPort: 15432, TargetHost: "127.0.0.1", TargetPort: 5432}},
 	}
 
 	rt := NewRuntime()
-	reg := New(cfg, paths.Paths{}, rt)
+	reg := New(cfg, paths.Paths{Home: home}, rt)
 	mgr := NewManager(reg, rt, slog.New(slog.NewTextHandler(io.Discard, nil)))
 	reg.SetManager(mgr)
 
@@ -216,8 +169,6 @@ func TestStartMarksPasswordRemoteAsError(t *testing.T) {
 		t.Fatalf("Start returned error: %v", err)
 	}
 
-	// ssh exits almost immediately; poll until the watcher goroutine records
-	// the terminal state rather than relying on a fixed sleep.
 	deadline := time.Now().Add(3 * time.Second)
 	var state TunnelState
 	var errMsg string

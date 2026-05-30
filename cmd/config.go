@@ -9,8 +9,8 @@ import (
 	"github.com/spf13/cobra"
 	"gopkg.in/yaml.v3"
 
-	"github.com/HobaiRiku/ssh-tunnel-service/internal/config"
-	"github.com/HobaiRiku/ssh-tunnel-service/internal/paths"
+	"ssh-tunnel-service/internal/config"
+	"ssh-tunnel-service/internal/paths"
 )
 
 func configCmd() *cobra.Command {

@@ -20,6 +20,7 @@ const (
 
 	subData = "data"
 	subLogs = "logs"
+	subKeys = "keys"
 
 	fileConfig     = "config.yaml"
 	fileLog        = "ssh-tunnel-service.log"
@@ -62,9 +63,9 @@ func pickHome(override string) (string, error) {
 	return filepath.Join(h, defaultDirName), nil
 }
 
-// EnsureTree creates Home, data/, logs/ with mode 0700, idempotent.
+// EnsureTree creates Home, data/, logs/, keys/ with mode 0700, idempotent.
 func (p Paths) EnsureTree() error {
-	for _, d := range []string{p.Home, p.Data(), p.Logs()} {
+	for _, d := range []string{p.Home, p.Data(), p.Logs(), p.Keys()} {
 		if err := os.MkdirAll(d, dirMode); err != nil {
 			return fmt.Errorf("mkdir %s: %w", d, err)
 		}
@@ -77,6 +78,7 @@ func (p Paths) EnsureTree() error {
 
 func (p Paths) Data() string          { return filepath.Join(p.Home, subData) }
 func (p Paths) Logs() string          { return filepath.Join(p.Home, subLogs) }
+func (p Paths) Keys() string          { return filepath.Join(p.Home, subKeys) }
 func (p Paths) Config() string        { return filepath.Join(p.Home, fileConfig) }
 func (p Paths) KnownHosts() string    { return filepath.Join(p.Home, fileKnownHosts) }
 func (p Paths) Token() string         { return filepath.Join(p.Home, fileToken) }

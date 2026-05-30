@@ -1,11 +1,28 @@
 // API client for ssh-tunnel-service REST API
 
+export interface SSHKey {
+  id: string
+  name: string
+  file: string
+  description: string
+}
+
+export interface SSHKeyPayload {
+  id?: string
+  name: string
+  file_name?: string
+  private_key?: string
+  source_path?: string
+  description: string
+}
+
 export interface Remote {
   id: string
   name: string
   host: string
   port: number
   user: string
+  key_id: string
   description: string
 }
 
@@ -41,10 +58,7 @@ interface BootstrapResponse {
 let _token: string | null = null
 
 export function getErrorMessage(error: unknown): string {
-  if (error instanceof Error) {
-    return error.message
-  }
-
+  if (error instanceof Error) return error.message
   return String(error)
 }
 
@@ -75,7 +89,7 @@ async function req<T>(method: string, path: string, body?: unknown): Promise<T> 
   const res = await fetch(BASE + path, {
     method,
     headers,
-    body: body === undefined ? undefined : JSON.stringify(body)
+    body: body === undefined ? undefined : JSON.stringify(body),
   })
   if (!res.ok) {
     const text = await res.text().catch(() => res.statusText)
@@ -86,21 +100,23 @@ async function req<T>(method: string, path: string, body?: unknown): Promise<T> 
 }
 
 export const api = {
-  // Remotes
+  listKeys: () => req<SSHKey[]>('GET', '/keys'),
+  addKey: (key: SSHKeyPayload) => req<SSHKey>('POST', '/keys', key),
+  updateKey: (id: string, key: SSHKeyPayload) => req<SSHKey>('PUT', `/keys/${id}`, key),
+  deleteKey: (id: string) => req<void>('DELETE', `/keys/${id}`),
+
   listRemotes: () => req<Remote[]>('GET', '/remotes'),
-  addRemote: (r: Omit<Remote, 'id'> & { id: string }) => req<Remote>('POST', '/remotes', r),
-  updateRemote: (id: string, r: Remote) => req<Remote>('PUT', `/remotes/${id}`, r),
+  addRemote: (remote: Omit<Remote, 'id'> & { id: string }) => req<Remote>('POST', '/remotes', remote),
+  updateRemote: (id: string, remote: Remote) => req<Remote>('PUT', `/remotes/${id}`, remote),
   deleteRemote: (id: string) => req<void>('DELETE', `/remotes/${id}`),
 
-  // Tunnels
   listTunnels: () => req<TunnelStatus[]>('GET', '/tunnels'),
-  addTunnel: (t: Tunnel) => req<Tunnel>('POST', '/tunnels', t),
-  updateTunnel: (id: string, t: Tunnel) => req<Tunnel>('PUT', `/tunnels/${id}`, t),
+  addTunnel: (tunnel: Tunnel) => req<Tunnel>('POST', '/tunnels', tunnel),
+  updateTunnel: (id: string, tunnel: Tunnel) => req<Tunnel>('PUT', `/tunnels/${id}`, tunnel),
   deleteTunnel: (id: string) => req<void>('DELETE', `/tunnels/${id}`),
   getTunnelCommand: (id: string) => req<TunnelCommandPreview>('GET', `/tunnels/${id}/command`),
   startTunnel: (id: string) => req<void>('POST', `/tunnels/${id}/start`),
   stopTunnel: (id: string) => req<void>('POST', `/tunnels/${id}/stop`),
 
-  // Health
-  health: () => req<{ ok: boolean }>('GET', '/health')
+  health: () => req<{ ok: boolean }>('GET', '/health'),
 }

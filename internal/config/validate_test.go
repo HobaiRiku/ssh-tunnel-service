@@ -52,6 +52,17 @@ func TestValidateRejectsMissingKnownHostsPath(t *testing.T) {
 	}
 }
 
+func TestValidateRejectsUnknownRemoteKey(t *testing.T) {
+	cfg := &Config{
+		App:     AppConfig{SSHHostKeyPolicy: SSHHostKeyPolicyInsecure},
+		Remotes: []Remote{{ID: "remote-a", Name: "A", Host: "host", Port: 22, User: "user", KeyID: "missing"}},
+	}
+
+	if err := Validate(cfg); err == nil {
+		t.Fatal("expected unknown remote key to be rejected")
+	}
+}
+
 func TestLoadWithDefaultsAppliesKnownHostsPath(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "config.yaml")
 	if err := WriteRaw(path, []byte("app: {}\n"), 0o600); err != nil {

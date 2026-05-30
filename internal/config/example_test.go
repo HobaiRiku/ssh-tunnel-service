@@ -25,8 +25,10 @@ func TestWriteExampleProducesValidConfig(t *testing.T) {
 	if len(cfg.Tunnels) == 0 {
 		t.Fatal("expected example to define at least one tunnel")
 	}
+	if len(cfg.Keys) == 0 {
+		t.Fatal("expected example to define at least one key")
+	}
 
-	// Every tunnel must reference a remote that actually exists.
 	remoteIDs := map[string]bool{}
 	for _, r := range cfg.Remotes {
 		remoteIDs[r.ID] = true

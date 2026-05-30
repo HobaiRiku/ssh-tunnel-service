@@ -12,7 +12,7 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/HobaiRiku/ssh-tunnel-service/internal/config"
+	"ssh-tunnel-service/internal/config"
 )
 
 // Manager launches and tracks ssh child processes for each tunnel.
@@ -36,7 +36,7 @@ func NewManager(reg *Registry, rt *Runtime, logger *slog.Logger) *Manager {
 
 // Start launches the tunnel identified by id.
 func (m *Manager) Start(ctx context.Context, id string) error {
-	ts, remote, appCfg, err := m.lookupTunnel(id)
+	ts, remote, key, appCfg, err := m.lookupTunnel(id)
 	if err != nil {
 		return err
 	}
@@ -46,8 +46,14 @@ func (m *Manager) Start(ctx context.Context, id string) error {
 			return err
 		}
 	}
+	if key != nil {
+		if err := ensurePrivateKeyFile(m.reg.KeyPath(key.File), 0o600); err != nil {
+			m.rt.SetError(id, err.Error())
+			return err
+		}
+	}
 
-	args := sshArgs(ts.Tunnel, remote, appCfg)
+	args := sshArgs(ts.Tunnel, remote, key, appCfg, m.reg)
 
 	m.mu.Lock()
 	if _, exists := m.procs[id]; exists {
@@ -66,7 +72,7 @@ func (m *Manager) Start(ctx context.Context, id string) error {
 	m.rt.SetRunning(id, cmd.Process.Pid)
 	m.mu.Unlock()
 
-	m.logger.Info("tunnel started", "id", id, "pid", cmd.Process.Pid, "args", args)
+	m.logger.Info("tunnel started", "id", id, "pid", cmd.Process.Pid, "remote", remote.ID, "key", remote.KeyID, "args", args)
 	go func() {
 		waitErr := cmd.Wait()
 		stderrText := strings.TrimSpace(stderr.String())
@@ -95,11 +101,11 @@ func (m *Manager) Start(ctx context.Context, id string) error {
 
 // Command returns the concrete ssh command the service would launch for id.
 func (m *Manager) Command(id string) (TunnelCommandPreview, error) {
-	ts, remote, appCfg, err := m.lookupTunnel(id)
+	ts, remote, key, appCfg, err := m.lookupTunnel(id)
 	if err != nil {
 		return TunnelCommandPreview{}, err
 	}
-	args := sshArgs(ts.Tunnel, remote, appCfg)
+	args := sshArgs(ts.Tunnel, remote, key, appCfg, m.reg)
 	return TunnelCommandPreview{
 		Command: shellCommand("ssh", args),
 		Args:    args,
@@ -125,6 +131,28 @@ func (m *Manager) Stop(id string) error {
 	return nil
 }
 
+// Restart restarts a running tunnel to apply configuration changes.
+func (m *Manager) Restart(ctx context.Context, id, reason string) error {
+	m.logger.Info("restarting tunnel", "id", id, "reason", reason)
+	if err := m.Stop(id); err != nil {
+		return err
+	}
+	if err := m.Start(ctx, id); err != nil {
+		m.logger.Error("tunnel restart failed", "id", id, "reason", reason, "err", err)
+		return err
+	}
+	m.logger.Info("tunnel restarted", "id", id, "reason", reason)
+	return nil
+}
+
+// IsRunning reports whether the tunnel currently has a managed process.
+func (m *Manager) IsRunning(id string) bool {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	_, ok := m.procs[id]
+	return ok
+}
+
 // AutoStart launches all tunnels with auto_start: true.
 func (m *Manager) AutoStart(ctx context.Context) {
 	for _, ts := range m.reg.ListTunnels() {
@@ -136,25 +164,29 @@ func (m *Manager) AutoStart(ctx context.Context) {
 	}
 }
 
-func (m *Manager) lookupTunnel(id string) (TunnelStatus, config.Remote, config.AppConfig, error) {
+func (m *Manager) lookupTunnel(id string) (TunnelStatus, config.Remote, *config.SSHKey, config.AppConfig, error) {
 	ts, err := m.reg.GetTunnel(id)
 	if err != nil {
-		return TunnelStatus{}, config.Remote{}, config.AppConfig{}, err
+		return TunnelStatus{}, config.Remote{}, nil, config.AppConfig{}, err
 	}
 	remote, err := m.reg.GetRemote(ts.RemoteID)
 	if err != nil {
-		return TunnelStatus{}, config.Remote{}, config.AppConfig{}, err
+		return TunnelStatus{}, config.Remote{}, nil, config.AppConfig{}, err
 	}
-	return ts, remote, m.reg.AppConfig(), nil
+	var key *config.SSHKey
+	if remote.KeyID != "" {
+		resolvedKey, err := m.reg.GetKey(remote.KeyID)
+		if err != nil {
+			return TunnelStatus{}, config.Remote{}, nil, config.AppConfig{}, err
+		}
+		key = &resolvedKey
+	}
+	return ts, remote, key, m.reg.AppConfig(), nil
 }
 
-func sshArgs(tunnel config.Tunnel, remote config.Remote, appCfg config.AppConfig) []string {
+func sshArgs(tunnel config.Tunnel, remote config.Remote, key *config.SSHKey, appCfg config.AppConfig, reg *Registry) []string {
 	forward := fmt.Sprintf("%s:%d:%s:%d", tunnel.BindAddress, tunnel.BindPort, tunnel.TargetHost, tunnel.TargetPort)
 
-	// The service runs ssh non-interactively, so disable every form of
-	// interactive credential prompting. Without this a remote that requires a
-	// password (or keyboard-interactive) auth would otherwise hang waiting on
-	// stdin forever; instead ssh fails fast and the tunnel is marked as error.
 	args := []string{
 		"-N",
 		"-o", "BatchMode=yes",
@@ -164,6 +196,12 @@ func sshArgs(tunnel config.Tunnel, remote config.Remote, appCfg config.AppConfig
 		"-o", "ExitOnForwardFailure=yes",
 	}
 	args = append(args, sshHostKeyArgs(appCfg)...)
+	if key != nil {
+		args = append(args,
+			"-i", reg.KeyPath(key.File),
+			"-o", "IdentitiesOnly=yes",
+		)
+	}
 	args = append(args, string(tunnel.Direction), forward)
 	args = append(args, tunnel.SSHOptions...)
 	args = append(args, "-p", fmt.Sprintf("%d", remote.Port), fmt.Sprintf("%s@%s", remote.User, remote.Host))
@@ -206,6 +244,23 @@ func ensureKnownHostsFile(path string, mode os.FileMode) error {
 	}
 	if err := os.Chmod(path, mode); err != nil {
 		return fmt.Errorf("chmod known_hosts file: %w", err)
+	}
+	return nil
+}
+
+func ensurePrivateKeyFile(path string, mode os.FileMode) error {
+	if path == "" {
+		return fmt.Errorf("ssh key file path is empty")
+	}
+	info, err := os.Stat(path)
+	if err != nil {
+		return fmt.Errorf("ssh key file %s: %w", path, err)
+	}
+	if info.IsDir() {
+		return fmt.Errorf("ssh key file %s is a directory", path)
+	}
+	if err := os.Chmod(path, mode); err != nil {
+		return fmt.Errorf("chmod ssh key file %s: %w", path, err)
 	}
 	return nil
 }

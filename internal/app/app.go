@@ -9,12 +9,12 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/HobaiRiku/ssh-tunnel-service/internal/api"
-	"github.com/HobaiRiku/ssh-tunnel-service/internal/config"
-	"github.com/HobaiRiku/ssh-tunnel-service/internal/paths"
-	"github.com/HobaiRiku/ssh-tunnel-service/internal/services"
-	"github.com/HobaiRiku/ssh-tunnel-service/internal/version"
-	"github.com/HobaiRiku/ssh-tunnel-service/internal/web"
+	"ssh-tunnel-service/internal/api"
+	"ssh-tunnel-service/internal/config"
+	"ssh-tunnel-service/internal/paths"
+	"ssh-tunnel-service/internal/services"
+	"ssh-tunnel-service/internal/version"
+	"ssh-tunnel-service/internal/web"
 )
 
 // Options bundles the inputs Run needs. Built by cmd/ from CLI flags.

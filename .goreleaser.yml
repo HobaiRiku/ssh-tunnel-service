@@ -1,0 +1,81 @@
+version: 2
+
+project_name: ssh-tunnel-service
+
+before:
+  hooks:
+    - go mod tidy
+    - sh -c 'cd ui && corepack pnpm install --frozen-lockfile && corepack pnpm run build'
+
+builds:
+  - id: ssh-tunnel-service
+    main: .
+    binary: ssh-tunnel-service
+    env:
+      - CGO_ENABLED=0
+    flags:
+      - -trimpath
+      - -tags=embedui
+    ldflags:
+      - -s -w
+      - -X ssh-tunnel-service/internal/version.Version={{ .Version }}
+      - -X ssh-tunnel-service/internal/version.Commit={{ .Commit }}
+      - -X ssh-tunnel-service/internal/version.BuildDate={{ .Date }}
+    goos:
+      - darwin
+      - linux
+      - windows
+    goarch:
+      - amd64
+      - arm64
+    goarm:
+      - "7"
+    ignore:
+      - goos: windows
+        goarch: arm
+
+archives:
+  - id: default
+    ids:
+      - ssh-tunnel-service
+    formats:
+      - tar.gz
+    format_overrides:
+      - goos: windows
+        formats:
+          - zip
+    files:
+      - LICENSE
+      - README.md
+
+checksum:
+  name_template: SHA256SUMS
+
+changelog:
+  use: github
+  sort: asc
+  filters:
+    exclude:
+      - '^docs:'
+      - '^test:'
+      - '^chore:'
+
+release:
+  prerelease: auto
+
+brews:
+  - name: ssh-tunnel-service
+    ids:
+      - ssh-tunnel-service
+    repository:
+      owner: HobaiRiku
+      name: homebrew-tap
+      token: "{{ .Env.HOMEBREW_TAP_GITHUB_TOKEN }}"
+    homepage: https://github.com/HobaiRiku/ssh-tunnel-service
+    description: Cross-platform SSH tunnel daemon with CLI, API, and embedded web UI
+    license: MIT
+    directory: Formula
+    install: |
+      bin.install "ssh-tunnel-service"
+    test: |
+      system "#{bin}/ssh-tunnel-service", "version"

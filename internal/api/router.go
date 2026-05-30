@@ -9,9 +9,9 @@ import (
 
 	"github.com/gin-gonic/gin"
 
-	"github.com/HobaiRiku/ssh-tunnel-service/internal/config"
-	"github.com/HobaiRiku/ssh-tunnel-service/internal/services"
-	"github.com/HobaiRiku/ssh-tunnel-service/internal/version"
+	"ssh-tunnel-service/internal/config"
+	"ssh-tunnel-service/internal/services"
+	"ssh-tunnel-service/internal/version"
 )
 
 // Options holds dependencies for the router.
@@ -34,10 +34,7 @@ func NewRouter(opts Options) *gin.Engine {
 	r.Use(gin.Recovery())
 	r.Use(accessLog(opts.Logger))
 
-	// Unprotected endpoints
 	r.GET("/api/health", func(c *gin.Context) { c.JSON(http.StatusOK, gin.H{"ok": true}) })
-	// Bootstrap: returns the token so the web UI can authenticate API calls.
-	// Restricted to loopback addresses; a non-loopback http_listen does not widen access.
 	r.GET("/api/bootstrap", func(c *gin.Context) {
 		ip := c.ClientIP()
 		if ip != "127.0.0.1" && ip != "::1" {
@@ -47,13 +44,18 @@ func NewRouter(opts Options) *gin.Engine {
 		c.JSON(http.StatusOK, gin.H{"token": opts.APIToken})
 	})
 
-	// Protected API group
 	api := r.Group("/api")
 	api.Use(tokenAuth(opts.APIToken))
 
 	api.GET("/version", func(c *gin.Context) { c.JSON(http.StatusOK, version.Current()) })
 
-	// Remotes CRUD
+	keys := api.Group("/keys")
+	keys.GET("", listKeys(opts.Registry))
+	keys.POST("", addKey(opts.Registry))
+	keys.GET("/:id", getKey(opts.Registry))
+	keys.PUT("/:id", updateKey(opts.Registry))
+	keys.DELETE("/:id", deleteKey(opts.Registry))
+
 	remotes := api.Group("/remotes")
 	remotes.GET("", listRemotes(opts.Registry))
 	remotes.POST("", addRemote(opts.Registry))
@@ -61,7 +63,6 @@ func NewRouter(opts Options) *gin.Engine {
 	remotes.PUT("/:id", updateRemote(opts.Registry))
 	remotes.DELETE("/:id", deleteRemote(opts.Registry))
 
-	// Tunnels CRUD + actions
 	tunnels := api.Group("/tunnels")
 	tunnels.GET("", listTunnels(opts.Registry))
 	tunnels.POST("", addTunnel(opts.Registry))
@@ -75,7 +76,78 @@ func NewRouter(opts Options) *gin.Engine {
 	return r
 }
 
-// ── Remotes ──────────────────────────────────────────────────────────────────
+func listKeys(reg *services.Registry) gin.HandlerFunc {
+	return func(c *gin.Context) { c.JSON(http.StatusOK, reg.ListKeys()) }
+}
+
+func getKey(reg *services.Registry) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		key, err := reg.GetKey(c.Param("id"))
+		if err != nil {
+			c.JSON(http.StatusNotFound, apiError(err))
+			return
+		}
+		c.JSON(http.StatusOK, key)
+	}
+}
+
+func addKey(reg *services.Registry) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		var input services.SSHKeyInput
+		if err := c.ShouldBindJSON(&input); err != nil {
+			c.JSON(http.StatusBadRequest, apiError(err))
+			return
+		}
+		if err := reg.AddKey(input); err != nil {
+			c.JSON(http.StatusBadRequest, apiError(err))
+			return
+		}
+		key, err := reg.GetKey(input.ID)
+		if err != nil {
+			c.JSON(http.StatusBadRequest, apiError(err))
+			return
+		}
+		c.JSON(http.StatusCreated, key)
+	}
+}
+
+func updateKey(reg *services.Registry) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		var input services.SSHKeyInput
+		if err := c.ShouldBindJSON(&input); err != nil {
+			c.JSON(http.StatusBadRequest, apiError(err))
+			return
+		}
+		if err := reg.UpdateKey(c.Param("id"), input); err != nil {
+			if errors.Is(err, services.ErrNotFound) {
+				c.JSON(http.StatusNotFound, apiError(err))
+				return
+			}
+			c.JSON(http.StatusBadRequest, apiError(err))
+			return
+		}
+		key, err := reg.GetKey(c.Param("id"))
+		if err != nil {
+			c.JSON(http.StatusBadRequest, apiError(err))
+			return
+		}
+		c.JSON(http.StatusOK, key)
+	}
+}
+
+func deleteKey(reg *services.Registry) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		if err := reg.DeleteKey(c.Param("id")); err != nil {
+			if errors.Is(err, services.ErrNotFound) {
+				c.JSON(http.StatusNotFound, apiError(err))
+				return
+			}
+			c.JSON(http.StatusBadRequest, apiError(err))
+			return
+		}
+		c.Status(http.StatusNoContent)
+	}
+}
 
 func listRemotes(reg *services.Registry) gin.HandlerFunc {
 	return func(c *gin.Context) { c.JSON(http.StatusOK, reg.ListRemotes()) }
@@ -139,8 +211,6 @@ func deleteRemote(reg *services.Registry) gin.HandlerFunc {
 		c.Status(http.StatusNoContent)
 	}
 }
-
-// ── Tunnels ───────────────────────────────────────────────────────────────────
 
 func listTunnels(reg *services.Registry) gin.HandlerFunc {
 	return func(c *gin.Context) { c.JSON(http.StatusOK, reg.ListTunnels()) }
@@ -239,8 +309,6 @@ func stopTunnel(mgr *services.Manager) gin.HandlerFunc {
 		c.JSON(http.StatusOK, gin.H{"status": "stopped"})
 	}
 }
-
-// ── Helpers ───────────────────────────────────────────────────────────────────
 
 func apiError(err error) gin.H {
 	return gin.H{"error": err.Error()}

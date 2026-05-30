@@ -5,6 +5,7 @@ import (
 	"encoding/hex"
 	"fmt"
 	"path/filepath"
+	"strings"
 )
 
 // GenerateToken returns a 32-byte cryptographically random hex string.
@@ -34,6 +35,26 @@ func Validate(cfg *Config) error {
 		return fmt.Errorf("app.ssh_known_hosts_file must be an absolute path")
 	}
 
+	keyIDs := map[string]bool{}
+	for i, key := range cfg.Keys {
+		if key.ID == "" {
+			return fmt.Errorf("keys[%d]: id is required", i)
+		}
+		if keyIDs[key.ID] {
+			return fmt.Errorf("keys[%d]: duplicate id %q", i, key.ID)
+		}
+		keyIDs[key.ID] = true
+		if key.Name == "" {
+			return fmt.Errorf("keys[%d] (%s): name is required", i, key.ID)
+		}
+		if key.File == "" {
+			return fmt.Errorf("keys[%d] (%s): file is required", i, key.ID)
+		}
+		if filepath.Base(key.File) != key.File || strings.Contains(key.File, "..") {
+			return fmt.Errorf("keys[%d] (%s): file must be a simple relative file name", i, key.ID)
+		}
+	}
+
 	ids := map[string]bool{}
 	for i, r := range cfg.Remotes {
 		if r.ID == "" {
@@ -51,6 +72,9 @@ func Validate(cfg *Config) error {
 		}
 		if r.User == "" {
 			return fmt.Errorf("remotes[%d] (%s): user is required", i, r.ID)
+		}
+		if r.KeyID != "" && !keyIDs[r.KeyID] {
+			return fmt.Errorf("remotes[%d] (%s): key_id %q not found", i, r.ID, r.KeyID)
 		}
 	}
 

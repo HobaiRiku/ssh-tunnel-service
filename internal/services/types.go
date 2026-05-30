@@ -5,7 +5,7 @@ package services
 import (
 	"errors"
 
-	"github.com/HobaiRiku/ssh-tunnel-service/internal/config"
+	"ssh-tunnel-service/internal/config"
 )
 
 // ErrNotFound is returned by registry lookups when the requested resource does
@@ -33,4 +33,14 @@ type TunnelStatus struct {
 type TunnelCommandPreview struct {
 	Command string   `json:"command"`
 	Args    []string `json:"args"`
+}
+
+// SSHKeyInput is the payload used to create or update a managed SSH key.
+type SSHKeyInput struct {
+	ID          string `json:"id,omitempty"`
+	Name        string `json:"name"`
+	Description string `json:"description,omitempty"`
+	FileName    string `json:"file_name,omitempty"`
+	PrivateKey  string `json:"private_key,omitempty"`
+	SourcePath  string `json:"source_path,omitempty"`
 }

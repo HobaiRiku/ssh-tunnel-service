@@ -18,6 +18,13 @@ app:
   ssh_host_key_policy: accept-new  # accept-new | strict | insecure
   # ssh_known_hosts_file defaults to <SSH_TUNNEL_HOME>/known_hosts when empty
 
+# ─── Managed SSH keys (stored under <SSH_TUNNEL_HOME>/keys/) ────────────────
+keys:
+  - id: deploy-key
+    name: "Primary deploy key"
+    file: "deploy-key"
+    description: "Upload or paste the private key into the runtime key store"
+
 # ─── Remote SSH servers (reusable targets) ─────────────────────────────────
 remotes:
   - id: bastion
@@ -25,6 +32,7 @@ remotes:
     host: bastion.prod.example.com
     port: 22
     user: deploy
+    key_id: deploy-key
     description: "Public jump host fronting the production VPC"
 
   - id: analytics-box
