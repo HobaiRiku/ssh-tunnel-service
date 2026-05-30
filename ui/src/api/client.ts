@@ -34,10 +34,22 @@ export interface TunnelCommandPreview {
   args: string[]
 }
 
+interface BootstrapResponse {
+  token?: string
+}
+
 let _token: string | null = null
 
+export function getErrorMessage(error: unknown): string {
+  if (error instanceof Error) {
+    return error.message
+  }
+
+  return String(error)
+}
+
 export async function initAuth(): Promise<void> {
-  const injected = (window as any).__AUTH_TOKEN__
+  const injected = window.__AUTH_TOKEN__
   if (injected) {
     _token = injected
     return
@@ -45,7 +57,7 @@ export async function initAuth(): Promise<void> {
   try {
     const res = await fetch('/api/bootstrap')
     if (res.ok) {
-      const data = await res.json()
+      const data = (await res.json()) as BootstrapResponse
       _token = data.token ?? null
     }
   } catch {
@@ -56,21 +68,21 @@ export async function initAuth(): Promise<void> {
 const BASE = '/api'
 
 async function req<T>(method: string, path: string, body?: unknown): Promise<T> {
-  const headers: Record<string, string> = {}
-  if (body) headers['Content-Type'] = 'application/json'
-  if (_token) headers['Authorization'] = `Bearer ${_token}`
+  const headers = new Headers()
+  if (body !== undefined) headers.set('Content-Type', 'application/json')
+  if (_token) headers.set('Authorization', 'Bearer ' + _token)
 
   const res = await fetch(BASE + path, {
     method,
     headers,
-    body: body ? JSON.stringify(body) : undefined
+    body: body === undefined ? undefined : JSON.stringify(body)
   })
   if (!res.ok) {
     const text = await res.text().catch(() => res.statusText)
     throw new Error(`${method} ${path}: ${res.status} ${text}`)
   }
   if (res.status === 204) return undefined as T
-  return res.json()
+  return (await res.json()) as T
 }
 
 export const api = {
