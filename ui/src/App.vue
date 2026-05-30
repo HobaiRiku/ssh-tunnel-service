@@ -8,7 +8,6 @@ const theme = computed(() => osTheme.value === 'dark' ? darkTheme : null)
 const route = useRoute()
 
 const tabs = [
-  { label: 'Topology', to: '/' },
   { label: 'Tunnels', to: '/tunnels' },
   { label: 'Remotes', to: '/remotes' },
 ]

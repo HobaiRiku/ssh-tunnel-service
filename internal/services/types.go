@@ -8,15 +8,21 @@ import "github.com/HobaiRiku/ssh-tunnel-service/internal/config"
 type TunnelState string
 
 const (
-StateStopped TunnelState = "stopped"
-StateRunning TunnelState = "running"
-StateError   TunnelState = "error"
+	StateStopped TunnelState = "stopped"
+	StateRunning TunnelState = "running"
+	StateError   TunnelState = "error"
 )
 
 // TunnelStatus pairs a config.Tunnel definition with live runtime information.
 type TunnelStatus struct {
-config.Tunnel
-State TunnelState `json:"state"`
-PID   int         `json:"pid,omitempty"`
-Error string      `json:"error,omitempty"`
+	config.Tunnel
+	State TunnelState `json:"state"`
+	PID   int         `json:"pid,omitempty"`
+	Error string      `json:"error,omitempty"`
+}
+
+// TunnelCommandPreview is the shell command equivalent for a configured tunnel.
+type TunnelCommandPreview struct {
+	Command string   `json:"command"`
+	Args    []string `json:"args"`
 }

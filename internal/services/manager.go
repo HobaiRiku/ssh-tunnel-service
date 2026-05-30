@@ -8,6 +8,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"sync"
 
@@ -35,17 +36,10 @@ func NewManager(reg *Registry, rt *Runtime, logger *slog.Logger) *Manager {
 
 // Start launches the tunnel identified by id.
 func (m *Manager) Start(ctx context.Context, id string) error {
-	ts, err := m.reg.GetTunnel(id)
+	ts, remote, appCfg, err := m.lookupTunnel(id)
 	if err != nil {
 		return err
 	}
-	remote, err := m.reg.GetRemote(ts.RemoteID)
-	if err != nil {
-		return err
-	}
-	appCfg := m.reg.AppConfig()
-
-	forward := fmt.Sprintf("%s:%d:%s:%d", ts.BindAddress, ts.BindPort, ts.TargetHost, ts.TargetPort)
 	if appCfg.SSHHostKeyPolicy != config.SSHHostKeyPolicyInsecure {
 		if err := ensureKnownHostsFile(appCfg.SSHKnownHosts, 0o600); err != nil {
 			m.rt.SetError(id, err.Error())
@@ -53,21 +47,7 @@ func (m *Manager) Start(ctx context.Context, id string) error {
 		}
 	}
 
-	// The service runs ssh non-interactively, so disable every form of
-	// interactive credential prompting. Without this a remote that requires a
-	// password (or keyboard-interactive) auth would otherwise hang waiting on
-	// stdin forever; instead ssh fails fast and the tunnel is marked as error.
-	args := []string{
-		"-N",
-		"-o", "BatchMode=yes",
-		"-o", "PasswordAuthentication=no",
-		"-o", "KbdInteractiveAuthentication=no",
-		"-o", "NumberOfPasswordPrompts=0",
-	}
-	args = append(args, sshHostKeyArgs(appCfg)...)
-	args = append(args, string(ts.Direction), forward)
-	args = append(args, ts.SSHOptions...)
-	args = append(args, "-p", fmt.Sprintf("%d", remote.Port), fmt.Sprintf("%s@%s", remote.User, remote.Host))
+	args := sshArgs(ts.Tunnel, remote, appCfg)
 
 	m.mu.Lock()
 	if _, exists := m.procs[id]; exists {
@@ -113,6 +93,19 @@ func (m *Manager) Start(ctx context.Context, id string) error {
 	return nil
 }
 
+// Command returns the concrete ssh command the service would launch for id.
+func (m *Manager) Command(id string) (TunnelCommandPreview, error) {
+	ts, remote, appCfg, err := m.lookupTunnel(id)
+	if err != nil {
+		return TunnelCommandPreview{}, err
+	}
+	args := sshArgs(ts.Tunnel, remote, appCfg)
+	return TunnelCommandPreview{
+		Command: shellCommand("ssh", args),
+		Args:    args,
+	}, nil
+}
+
 // Stop kills the running tunnel process.
 func (m *Manager) Stop(id string) error {
 	m.mu.Lock()
@@ -141,6 +134,40 @@ func (m *Manager) AutoStart(ctx context.Context) {
 			}
 		}
 	}
+}
+
+func (m *Manager) lookupTunnel(id string) (TunnelStatus, config.Remote, config.AppConfig, error) {
+	ts, err := m.reg.GetTunnel(id)
+	if err != nil {
+		return TunnelStatus{}, config.Remote{}, config.AppConfig{}, err
+	}
+	remote, err := m.reg.GetRemote(ts.RemoteID)
+	if err != nil {
+		return TunnelStatus{}, config.Remote{}, config.AppConfig{}, err
+	}
+	return ts, remote, m.reg.AppConfig(), nil
+}
+
+func sshArgs(tunnel config.Tunnel, remote config.Remote, appCfg config.AppConfig) []string {
+	forward := fmt.Sprintf("%s:%d:%s:%d", tunnel.BindAddress, tunnel.BindPort, tunnel.TargetHost, tunnel.TargetPort)
+
+	// The service runs ssh non-interactively, so disable every form of
+	// interactive credential prompting. Without this a remote that requires a
+	// password (or keyboard-interactive) auth would otherwise hang waiting on
+	// stdin forever; instead ssh fails fast and the tunnel is marked as error.
+	args := []string{
+		"-N",
+		"-o", "BatchMode=yes",
+		"-o", "PasswordAuthentication=no",
+		"-o", "KbdInteractiveAuthentication=no",
+		"-o", "NumberOfPasswordPrompts=0",
+		"-o", "ExitOnForwardFailure=yes",
+	}
+	args = append(args, sshHostKeyArgs(appCfg)...)
+	args = append(args, string(tunnel.Direction), forward)
+	args = append(args, tunnel.SSHOptions...)
+	args = append(args, "-p", fmt.Sprintf("%d", remote.Port), fmt.Sprintf("%s@%s", remote.User, remote.Host))
+	return args
 }
 
 func sshHostKeyArgs(appCfg config.AppConfig) []string {
@@ -212,4 +239,25 @@ func diagnoseSSHFailure(stderr string) string {
 	default:
 		return stderr
 	}
+}
+
+var safeShellArg = regexp.MustCompile(`^[A-Za-z0-9_@%+=:,./-]+$`)
+
+func shellCommand(bin string, args []string) string {
+	quoted := make([]string, 0, len(args)+1)
+	quoted = append(quoted, shellQuote(bin))
+	for _, arg := range args {
+		quoted = append(quoted, shellQuote(arg))
+	}
+	return strings.Join(quoted, " ")
+}
+
+func shellQuote(arg string) string {
+	if arg == "" {
+		return "''"
+	}
+	if safeShellArg.MatchString(arg) {
+		return arg
+	}
+	return "'" + strings.ReplaceAll(arg, "'", `'\''`) + "'"
 }

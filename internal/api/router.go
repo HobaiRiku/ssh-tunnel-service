@@ -66,6 +66,7 @@ func NewRouter(opts Options) *gin.Engine {
 	tunnels.GET("", listTunnels(opts.Registry))
 	tunnels.POST("", addTunnel(opts.Registry))
 	tunnels.GET("/:id", getTunnel(opts.Registry))
+	tunnels.GET("/:id/command", tunnelCommand(opts.Manager))
 	tunnels.PUT("/:id", updateTunnel(opts.Registry))
 	tunnels.DELETE("/:id", deleteTunnel(opts.Registry))
 	tunnels.POST("/:id/start", startTunnel(opts.Context, opts.Manager))
@@ -153,6 +154,21 @@ func getTunnel(reg *services.Registry) gin.HandlerFunc {
 			return
 		}
 		c.JSON(http.StatusOK, ts)
+	}
+}
+
+func tunnelCommand(mgr *services.Manager) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		preview, err := mgr.Command(c.Param("id"))
+		if err != nil {
+			if strings.Contains(err.Error(), "not found") {
+				c.JSON(http.StatusNotFound, apiError(err))
+				return
+			}
+			c.JSON(http.StatusBadRequest, apiError(err))
+			return
+		}
+		c.JSON(http.StatusOK, preview)
 	}
 }
 

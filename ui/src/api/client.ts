@@ -29,6 +29,11 @@ export interface TunnelStatus extends Tunnel {
   error: string
 }
 
+export interface TunnelCommandPreview {
+  command: string
+  args: string[]
+}
+
 let _token: string | null = null
 
 export async function initAuth(): Promise<void> {
@@ -80,6 +85,7 @@ export const api = {
   addTunnel: (t: Tunnel) => req<Tunnel>('POST', '/tunnels', t),
   updateTunnel: (id: string, t: Tunnel) => req<Tunnel>('PUT', `/tunnels/${id}`, t),
   deleteTunnel: (id: string) => req<void>('DELETE', `/tunnels/${id}`),
+  getTunnelCommand: (id: string) => req<TunnelCommandPreview>('GET', `/tunnels/${id}/command`),
   startTunnel: (id: string) => req<void>('POST', `/tunnels/${id}/start`),
   stopTunnel: (id: string) => req<void>('POST', `/tunnels/${id}/stop`),
 
