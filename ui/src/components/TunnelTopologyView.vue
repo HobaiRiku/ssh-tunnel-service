@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, nextTick, onMounted, watch } from 'vue'
+import { computed, markRaw, nextTick, onMounted, watch } from 'vue'
 import { VueFlow, useVueFlow } from '@vue-flow/core'
 import { Background } from '@vue-flow/background'
 import { Controls } from '@vue-flow/controls'
@@ -20,26 +20,21 @@ const props = defineProps<{
 }>()
 
 const emit = defineEmits<{
-  (e: 'start', id: string): void
-  (e: 'stop', id: string): void
-  (e: 'edit', tunnel: TunnelStatus): void
-  (e: 'delete', id: string): void
-  (e: 'command', tunnel: TunnelStatus): void
+  (e: 'select', tunnel: TunnelStatus): void
 }>()
 
 const { fitView } = useVueFlow()
 
 const nodeTypes = {
-  remoteGroup: RemoteGroupNode,
-  tunnel: TunnelNode,
-  target: TargetNode,
+  remoteGroup: markRaw(RemoteGroupNode),
+  tunnel: markRaw(TunnelNode),
+  target: markRaw(TargetNode),
 }
 
 const GROUP_HEADER_H = 52
-const TUNNEL_HEADER_H = 32
-const TUNNEL_INFO_H = 36
-const TUNNEL_ACTIONS_H = 36
-const TUNNEL_SLOT_H = TUNNEL_HEADER_H + TUNNEL_INFO_H + TUNNEL_ACTIONS_H + 12
+const TUNNEL_HEADER_H = 36
+const TUNNEL_INFO_H = 44
+const TUNNEL_SLOT_H = TUNNEL_HEADER_H + TUNNEL_INFO_H + 12
 const GROUP_PAD_TOP = 12
 const GROUP_PAD_BOT = 12
 const GROUP_W = 252
@@ -87,11 +82,7 @@ const flowNodes = computed<Node[]>(() => {
           targetHost: tunnel.target_host,
           targetPort: tunnel.target_port,
           state: tunnel.state,
-          onStart: () => emit('start', tunnel.id),
-          onStop: () => emit('stop', tunnel.id),
-          onEdit: () => emit('edit', tunnel),
-          onDelete: () => emit('delete', tunnel.id),
-          onCommand: () => emit('command', tunnel),
+          onSelect: () => emit('select', tunnel),
         },
         draggable: false,
         selectable: false,
@@ -191,20 +182,24 @@ onMounted(refit)
 
 <style scoped>
 .topology-view {
-  height: 100%;
+  width: 100%;
+  height: calc(100vh - 240px);
   min-height: 520px;
+  display: flex;
+  flex-direction: column;
 }
 
 .flow {
+  flex: 1;
+  min-height: 0;
   width: 100%;
-  height: 100%;
   background: linear-gradient(180deg, #f8fafc 0%, #f1f5f9 100%);
   border-radius: 12px;
 }
 
 .empty-state {
-  height: 100%;
-  min-height: 520px;
+  flex: 1;
+  min-height: 0;
   display: flex;
   flex-direction: column;
   align-items: center;

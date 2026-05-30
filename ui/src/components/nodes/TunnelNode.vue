@@ -11,34 +11,41 @@ const props = defineProps<{
     targetHost: string
     targetPort: number
     state: string
-    onStart?: () => void
-    onStop?: () => void
-    onEdit?: () => void
-    onDelete?: () => void
-    onCommand?: () => void
+    onSelect?: () => void
   }
 }>()
 
 const stateStyle = computed(() => {
   switch (props.data.state) {
     case 'running':
-      return { bg: '#f0fdf4', border: '#22c55e', dot: '#22c55e' }
+      return { bg: '#f0fdf4', border: '#22c55e', dot: '#22c55e', label: 'Running' }
     case 'error':
-      return { bg: '#fef2f2', border: '#ef4444', dot: '#ef4444' }
+      return { bg: '#fef2f2', border: '#ef4444', dot: '#ef4444', label: 'Error' }
     default:
-      return { bg: '#f8fafc', border: '#cbd5e1', dot: '#94a3b8' }
+      return { bg: '#f8fafc', border: '#cbd5e1', dot: '#94a3b8', label: 'Stopped' }
   }
 })
 </script>
 
 <template>
-  <div class="tunnel-node" :style="{ background: stateStyle.bg, borderColor: stateStyle.border }">
+  <div
+    class="tunnel-node"
+    :style="{ background: stateStyle.bg, borderColor: stateStyle.border }"
+    role="button"
+    tabindex="0"
+    @click.stop="data.onSelect?.()"
+    @keydown.enter.stop="data.onSelect?.()"
+    @keydown.space.stop="data.onSelect?.()"
+  >
     <div class="tunnel-top">
       <svg class="icon" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round">
         <path d="M3 10h14M11 5l6 5-6 5"/>
       </svg>
       <span class="name">{{ data.label }}</span>
-      <span class="state-dot" :style="{ background: stateStyle.dot }"></span>
+      <span class="state-pill" :style="{ background: stateStyle.bg, color: stateStyle.dot, borderColor: stateStyle.border }">
+        <span class="state-dot" :style="{ background: stateStyle.dot }"></span>
+        {{ stateStyle.label }}
+      </span>
     </div>
     <div class="tunnel-info">
       <div class="line">
@@ -46,14 +53,6 @@ const stateStyle = computed(() => {
         <span class="addr">{{ data.bindAddress }}:{{ data.bindPort }}</span>
       </div>
       <div class="target">→ {{ data.targetHost }}:{{ data.targetPort }}</div>
-    </div>
-    <div class="actions">
-      <button type="button" class="action primary" @click.stop="data.state === 'running' ? data.onStop?.() : data.onStart?.()">
-        {{ data.state === 'running' ? 'Stop' : 'Start' }}
-      </button>
-      <button type="button" class="action" @click.stop="data.onEdit?.()">Edit</button>
-      <button type="button" class="action" @click.stop="data.onCommand?.()">SSH</button>
-      <button type="button" class="action danger" @click.stop="data.onDelete?.()">Delete</button>
     </div>
     <Handle type="source" :position="Position.Right" class="handle-right" />
   </div>
@@ -66,13 +65,25 @@ const stateStyle = computed(() => {
   width: 220px;
   overflow: hidden;
   box-shadow: 0 1px 4px rgba(0, 0, 0, 0.08);
+  cursor: pointer;
+  transition: box-shadow 0.15s ease, transform 0.15s ease;
+}
+
+.tunnel-node:hover {
+  box-shadow: 0 4px 12px rgba(15, 23, 42, 0.12);
+  transform: translateY(-1px);
+}
+
+.tunnel-node:focus-visible {
+  outline: 2px solid #2563eb;
+  outline-offset: 2px;
 }
 
 .tunnel-top {
   display: flex;
   align-items: center;
   gap: 6px;
-  padding: 7px 10px 5px;
+  padding: 8px 10px;
   border-bottom: 1px solid rgba(0, 0, 0, 0.06);
 }
 
@@ -93,9 +104,21 @@ const stateStyle = computed(() => {
   text-overflow: ellipsis;
 }
 
+.state-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 10px;
+  font-weight: 600;
+  padding: 2px 6px 2px 5px;
+  border-radius: 10px;
+  border: 1px solid;
+  flex-shrink: 0;
+}
+
 .state-dot {
-  width: 7px;
-  height: 7px;
+  width: 6px;
+  height: 6px;
   border-radius: 50%;
   flex-shrink: 0;
 }
@@ -104,7 +127,7 @@ const stateStyle = computed(() => {
   display: flex;
   flex-direction: column;
   gap: 4px;
-  padding: 6px 10px 8px;
+  padding: 8px 10px 10px;
 }
 
 .line {
@@ -140,38 +163,6 @@ const stateStyle = computed(() => {
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
-}
-
-.actions {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 6px;
-  padding: 0 10px 10px;
-}
-
-.action {
-  border: 1px solid #cbd5e1;
-  background: #fff;
-  color: #334155;
-  border-radius: 6px;
-  font-size: 10px;
-  font-weight: 600;
-  padding: 5px 0;
-  cursor: pointer;
-}
-
-.action.primary {
-  border-color: #2563eb;
-  color: #2563eb;
-}
-
-.action.danger {
-  border-color: #fecaca;
-  color: #dc2626;
-}
-
-.action:hover {
-  background: #f8fafc;
 }
 
 :deep(.handle-right) {
