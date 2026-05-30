@@ -255,11 +255,11 @@ function actionEdit() {
   openEdit(tunnel)
 }
 
-function actionCommand() {
+async function actionCommand() {
   if (!activeTunnel.value) return
   const tunnel = activeTunnel.value
   closeActions()
-  openCommand(tunnel)
+  await openCommand(tunnel)
 }
 
 async function actionDelete() {
@@ -330,10 +330,10 @@ const columns: DataTableColumns<TunnelStatus> = [
       h(NSpace, { size: 'small' }, {
         default: () => [
           row.state !== 'running'
-            ? h(NButton, { size: 'tiny', type: 'success', onClick: () => doStart(row.id) }, { default: () => 'Start' })
-            : h(NButton, { size: 'tiny', type: 'warning', onClick: () => doStop(row.id) }, { default: () => 'Stop' }),
+            ? h(NButton, { size: 'tiny', type: 'success', onClick: () => { void doStart(row.id) } }, { default: () => 'Start' })
+            : h(NButton, { size: 'tiny', type: 'warning', onClick: () => { void doStop(row.id) } }, { default: () => 'Stop' }),
           h(NButton, { size: 'tiny', secondary: true, onClick: () => openEdit(row) }, { default: () => 'Edit' }),
-          h(NButton, { size: 'tiny', tertiary: true, onClick: () => openCommand(row) }, { default: () => 'SSH' }),
+          h(NButton, { size: 'tiny', tertiary: true, onClick: () => { void openCommand(row) } }, { default: () => 'SSH' }),
           h(
             NPopconfirm,
             { onPositiveClick: () => doDelete(row.id) },
