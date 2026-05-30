@@ -319,7 +319,7 @@ onMounted(refresh)
       style="width: 720px"
     >
       <n-space vertical :size="12" style="margin-top: 8px">
-        <n-text depth="3">SSH arguments the service will pass to <code>ssh</code> for this tunnel (POSIX shell rendering — may not be directly runnable on non-POSIX shells).</n-text>
+        <n-text depth="3">SSH arguments the service will pass to <code>ssh</code> for this tunnel. Note: POSIX shell rendering — may not be directly runnable on non-POSIX shells.</n-text>
         <n-text v-if="commandLoading" depth="3">Loading command…</n-text>
         <n-input v-else :value="commandValue" type="textarea" :rows="6" readonly />
       </n-space>
