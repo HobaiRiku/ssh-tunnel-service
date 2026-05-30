@@ -320,7 +320,8 @@ onMounted(refresh)
     >
       <n-space vertical :size="12" style="margin-top: 8px">
         <n-text depth="3">This is the exact ssh command shape the service will launch for the selected tunnel.</n-text>
-        <n-input :value="commandValue" type="textarea" :rows="6" readonly :loading="commandLoading" />
+        <n-text v-if="commandLoading" depth="3">Loading command…</n-text>
+        <n-input v-else :value="commandValue" type="textarea" :rows="6" readonly />
       </n-space>
       <template #action>
         <n-space justify="end">
