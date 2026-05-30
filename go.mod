@@ -1,4 +1,4 @@
-module github.com/HobaiRiku/ssh-tunnel-service
+module ssh-tunnel-service
 
 go 1.23.0
 

@@ -8,7 +8,7 @@
 #   make all           # Equivalent: ui-build + build
 
 APP_NAME    := ssh-tunnel-service
-PKG_VERSION := github.com/HobaiRiku/ssh-tunnel-service/internal/version
+PKG_VERSION := ssh-tunnel-service/internal/version
 
 VERSION ?= $(shell git describe --tags --always --dirty 2>/dev/null || echo dev)
 COMMIT  := $(shell git rev-parse --short HEAD 2>/dev/null || echo unknown)

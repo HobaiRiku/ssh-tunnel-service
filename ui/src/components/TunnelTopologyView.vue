@@ -8,6 +8,7 @@ import type { Remote, TunnelStatus } from '@/api/client'
 import RemoteGroupNode from '@/components/nodes/RemoteGroupNode.vue'
 import TunnelNode from '@/components/nodes/TunnelNode.vue'
 import TargetNode from '@/components/nodes/TargetNode.vue'
+import { useI18n } from '@/i18n'
 
 import '@vue-flow/core/dist/style.css'
 import '@vue-flow/core/dist/theme-default.css'
@@ -17,6 +18,7 @@ const props = defineProps<{
   tunnels: TunnelStatus[]
   remotes: Remote[]
   loading: boolean
+  selectedTunnelId?: string | null
 }>()
 
 const emit = defineEmits<{
@@ -24,6 +26,7 @@ const emit = defineEmits<{
 }>()
 
 const { fitView } = useVueFlow()
+const { t } = useI18n()
 
 const nodeTypes = {
   remoteGroup: markRaw(RemoteGroupNode),
@@ -31,18 +34,20 @@ const nodeTypes = {
   target: markRaw(TargetNode),
 }
 
-const GROUP_HEADER_H = 52
-const TUNNEL_HEADER_H = 36
-const TUNNEL_INFO_H = 44
-const TUNNEL_SLOT_H = TUNNEL_HEADER_H + TUNNEL_INFO_H + 12
-const GROUP_PAD_TOP = 12
-const GROUP_PAD_BOT = 12
-const GROUP_W = 252
-const TUNNEL_INDENT = 12
-const TARGET_X = 456
+const tunnelMap = computed(() => new Map(props.tunnels.map((tunnel) => [tunnel.id, tunnel] as const)))
+
+const GROUP_HEADER_H = 60
+const TUNNEL_SLOT_H = 128
+const GROUP_PAD_TOP = 18
+const GROUP_PAD_BOT = 22
+const GROUP_W = 320
+const TUNNEL_INDENT = 18
+const TARGET_X = 620
+const GROUP_GAP = 40
 
 const isEmpty = computed(() => !props.loading && props.remotes.length === 0)
 const hasTunnels = computed(() => props.tunnels.length > 0)
+const selectedTunnel = computed(() => props.tunnels.find((tunnel) => tunnel.id === props.selectedTunnelId) ?? null)
 
 const flowNodes = computed<Node[]>(() => {
   const nodes: Node[] = []
@@ -67,6 +72,7 @@ const flowNodes = computed<Node[]>(() => {
     remoteTunnels.forEach((tunnel, index) => {
       const childY = GROUP_HEADER_H + GROUP_PAD_TOP + index * TUNNEL_SLOT_H
       const absY = yOffset + childY
+      const onSelect = () => emit('select', tunnel)
 
       nodes.push({
         id: `tunnel-${tunnel.id}`,
@@ -82,7 +88,8 @@ const flowNodes = computed<Node[]>(() => {
           targetHost: tunnel.target_host,
           targetPort: tunnel.target_port,
           state: tunnel.state,
-          onSelect: () => emit('select', tunnel),
+          selected: tunnel.id === props.selectedTunnelId,
+          onSelect,
         },
         draggable: false,
         selectable: false,
@@ -92,15 +99,15 @@ const flowNodes = computed<Node[]>(() => {
       nodes.push({
         id: `target-${tunnel.id}`,
         type: 'target',
-        position: { x: TARGET_X, y: absY + (TUNNEL_SLOT_H - 36) / 2 },
-        data: { host: tunnel.target_host, port: tunnel.target_port },
+        position: { x: TARGET_X, y: absY + 38 },
+        data: { host: tunnel.target_host, port: tunnel.target_port, selected: tunnel.id === props.selectedTunnelId, onSelect },
         draggable: false,
         selectable: false,
         zIndex: 1,
       })
     })
 
-    yOffset += groupH + 24
+    yOffset += groupH + GROUP_GAP
   }
 
   return nodes
@@ -117,20 +124,25 @@ const flowEdges = computed<Edge[]>(() => {
     labelStyle: { fontSize: '10px', fill: '#64748b' },
     labelBgStyle: { fill: 'transparent' },
     style: {
-      stroke: tunnel.state === 'running' ? '#22c55e' : tunnel.state === 'error' ? '#ef4444' : '#94a3b8',
-      strokeWidth: 1.5,
+      stroke: tunnel.id === props.selectedTunnelId ? '#2563eb' : tunnel.state === 'running' ? '#22c55e' : tunnel.state === 'error' ? '#ef4444' : '#94a3b8',
+      strokeWidth: tunnel.id === props.selectedTunnelId ? 2.4 : 1.8,
     },
   }))
 })
+
+function handleNodeClick(event: { node: Node }) {
+  const id = event.node.id.replace(/^tunnel-|^target-/, '')
+  const tunnel = tunnelMap.value.get(id)
+  if (tunnel) emit('select', tunnel)
+}
 
 async function refit() {
   await nextTick()
   await new Promise<void>((resolve) => {
     window.setTimeout(resolve, 60)
   })
-
   if (flowNodes.value.length > 0) {
-    await fitView({ padding: 0.15, duration: 200 })
+    await fitView({ padding: 0.18, duration: 200 })
   }
 }
 
@@ -138,9 +150,7 @@ watch(() => flowNodes.value.length, () => {
   void refit()
 })
 watch(() => props.loading, (loading) => {
-  if (!loading) {
-    void refit()
-  }
+  if (!loading) void refit()
 })
 onMounted(() => {
   void refit()
@@ -157,8 +167,8 @@ onMounted(() => {
         <circle cx="56" cy="48" r="2" fill="#cbd5e1"/>
         <path d="M28 16 Q48 16 48 40" stroke="#e2e8f0" stroke-width="2" fill="none" stroke-dasharray="4 3"/>
       </svg>
-      <p class="empty-title">No remotes yet</p>
-      <p class="empty-sub">Create a remote and then add tunnels to view the topology here.</p>
+      <p class="empty-title">{{ t('topology.noRemotesTitle') }}</p>
+      <p class="empty-sub">{{ t('topology.noRemotesSub') }}</p>
     </div>
     <div v-else-if="!hasTunnels && !props.loading" class="empty-state">
       <svg class="empty-icon" viewBox="0 0 64 64" fill="none">
@@ -166,22 +176,34 @@ onMounted(() => {
         <rect x="36" y="34" width="22" height="12" rx="3" stroke="#cbd5e1" stroke-width="2"/>
         <path d="M28 24 L36 40" stroke="#e2e8f0" stroke-width="2" stroke-dasharray="4 3"/>
       </svg>
-      <p class="empty-title">No tunnels yet</p>
-      <p class="empty-sub">Add a tunnel to render the topology and manage it directly from this view.</p>
+      <p class="empty-title">{{ t('topology.noTunnelsTitle') }}</p>
+      <p class="empty-sub">{{ t('topology.noTunnelsSub') }}</p>
     </div>
-    <VueFlow
-      v-else
-      :nodes="flowNodes"
-      :edges="flowEdges"
-      :node-types="nodeTypes"
-      fit-view-on-init
-      :min-zoom="0.3"
-      :max-zoom="2"
-      class="flow"
-    >
-      <Background pattern-color="#e2e8f0" :gap="20" />
-      <Controls />
-    </VueFlow>
+    <template v-else>
+      <div class="topology-toolbar">
+        <span>{{ t('topology.clickHint') }}</span>
+        <div v-if="selectedTunnel" class="selected-pill">
+          <strong>{{ t('topology.selected') }}:</strong>
+          <span>{{ selectedTunnel.name || selectedTunnel.id }}</span>
+        </div>
+      </div>
+      <VueFlow
+        :nodes="flowNodes"
+        :edges="flowEdges"
+        :node-types="nodeTypes"
+        fit-view-on-init
+        :min-zoom="0.3"
+        :max-zoom="2"
+        :nodes-draggable="false"
+        :elements-selectable="false"
+        :nodes-connectable="false"
+        class="flow"
+        @node-click="handleNodeClick"
+      >
+        <Background pattern-color="#e2e8f0" :gap="20" />
+        <Controls />
+      </VueFlow>
+    </template>
   </div>
 </template>
 
@@ -189,9 +211,31 @@ onMounted(() => {
 .topology-view {
   width: 100%;
   height: calc(100vh - 240px);
-  min-height: 520px;
+  min-height: 560px;
   display: flex;
   flex-direction: column;
+  gap: 12px;
+}
+
+.topology-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 10px 14px;
+  background: #eff6ff;
+  color: #1d4ed8;
+  border-radius: 12px;
+  font-size: 13px;
+}
+
+.selected-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 10px;
+  border-radius: 999px;
+  background: rgba(37, 99, 235, 0.12);
 }
 
 .flow {
@@ -214,21 +258,7 @@ onMounted(() => {
   border-radius: 12px;
 }
 
-.empty-icon {
-  width: 72px;
-  height: 72px;
-}
-
-.empty-title {
-  font-size: 15px;
-  font-weight: 600;
-  color: #64748b;
-}
-
-.empty-sub {
-  max-width: 420px;
-  text-align: center;
-  font-size: 13px;
-  color: #94a3b8;
-}
+.empty-icon { width: 72px; height: 72px; }
+.empty-title { font-size: 15px; font-weight: 600; color: #64748b; }
+.empty-sub { max-width: 420px; text-align: center; font-size: 13px; color: #94a3b8; }
 </style>

@@ -4,6 +4,7 @@ package config
 // Config is the root document of config.yaml.
 type Config struct {
 	App     AppConfig `yaml:"app"     json:"app"`
+	Keys    []SSHKey  `yaml:"keys"    json:"keys"`
 	Remotes []Remote  `yaml:"remotes" json:"remotes"`
 	Tunnels []Tunnel  `yaml:"tunnels" json:"tunnels"`
 }
@@ -30,6 +31,14 @@ type AppConfig struct {
 	SSHKnownHosts    string           `yaml:"ssh_known_hosts_file" json:"ssh_known_hosts_file,omitempty"`
 }
 
+// SSHKey is a managed private key stored beneath the runtime home directory.
+type SSHKey struct {
+	ID          string `yaml:"id"          json:"id"`
+	Name        string `yaml:"name"        json:"name"`
+	File        string `yaml:"file"        json:"file"`
+	Description string `yaml:"description" json:"description,omitempty"`
+}
+
 // Remote is a reusable SSH target server definition.
 type Remote struct {
 	ID          string `yaml:"id"          json:"id"`
@@ -37,6 +46,7 @@ type Remote struct {
 	Host        string `yaml:"host"        json:"host"`
 	Port        int    `yaml:"port"        json:"port"`
 	User        string `yaml:"user"        json:"user"`
+	KeyID       string `yaml:"key_id"      json:"key_id,omitempty"`
 	Description string `yaml:"description" json:"description,omitempty"`
 }
 

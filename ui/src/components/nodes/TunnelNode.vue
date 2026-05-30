@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed } from 'vue'
 import { Handle, Position } from '@vue-flow/core'
+import { useI18n } from '@/i18n'
 
 const props = defineProps<{
   data: {
@@ -11,18 +12,21 @@ const props = defineProps<{
     targetHost: string
     targetPort: number
     state: string
+    selected?: boolean
     onSelect?: () => void
   }
 }>()
 
+const { t } = useI18n()
+
 const stateStyle = computed(() => {
   switch (props.data.state) {
     case 'running':
-      return { bg: '#f0fdf4', border: '#22c55e', dot: '#22c55e', label: 'Running' }
+      return { bg: '#f0fdf4', border: '#22c55e', dot: '#22c55e', label: t('common.running') }
     case 'error':
-      return { bg: '#fef2f2', border: '#ef4444', dot: '#ef4444', label: 'Error' }
+      return { bg: '#fef2f2', border: '#ef4444', dot: '#ef4444', label: t('common.error') }
     default:
-      return { bg: '#f8fafc', border: '#cbd5e1', dot: '#94a3b8', label: 'Stopped' }
+      return { bg: '#f8fafc', border: '#cbd5e1', dot: '#94a3b8', label: t('common.stopped') }
   }
 })
 </script>
@@ -30,6 +34,7 @@ const stateStyle = computed(() => {
 <template>
   <div
     class="tunnel-node"
+    :class="{ selected: data.selected }"
     :style="{ background: stateStyle.bg, borderColor: stateStyle.border }"
     role="button"
     tabindex="0"
@@ -61,114 +66,32 @@ const stateStyle = computed(() => {
 <style scoped>
 .tunnel-node {
   border: 1.5px solid;
-  border-radius: 8px;
-  width: 220px;
+  border-radius: 10px;
+  width: 272px;
   overflow: hidden;
   box-shadow: 0 1px 4px rgba(0, 0, 0, 0.08);
   cursor: pointer;
-  transition: box-shadow 0.15s ease, transform 0.15s ease;
+  transition: box-shadow 0.15s ease, transform 0.15s ease, border-color 0.15s ease;
 }
 
-.tunnel-node:hover {
-  box-shadow: 0 4px 12px rgba(15, 23, 42, 0.12);
+.tunnel-node:hover,
+.tunnel-node.selected {
+  box-shadow: 0 8px 18px rgba(15, 23, 42, 0.14);
   transform: translateY(-1px);
 }
 
-.tunnel-node:focus-visible {
-  outline: 2px solid #2563eb;
-  outline-offset: 2px;
-}
-
-.tunnel-top {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  padding: 8px 10px;
-  border-bottom: 1px solid rgba(0, 0, 0, 0.06);
-}
-
-.icon {
-  width: 14px;
-  height: 14px;
-  color: #64748b;
-  flex-shrink: 0;
-}
-
-.name {
-  font-weight: 600;
-  font-size: 12px;
-  color: #1e293b;
-  flex: 1;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-
-.state-pill {
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-  font-size: 10px;
-  font-weight: 600;
-  padding: 2px 6px 2px 5px;
-  border-radius: 10px;
-  border: 1px solid;
-  flex-shrink: 0;
-}
-
-.state-dot {
-  width: 6px;
-  height: 6px;
-  border-radius: 50%;
-  flex-shrink: 0;
-}
-
-.tunnel-info {
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-  padding: 8px 10px 10px;
-}
-
-.line {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-}
-
-.dir-badge {
-  font-family: 'SF Mono', 'Fira Code', monospace;
-  font-size: 10px;
-  font-weight: 700;
-  padding: 1px 5px;
-  border-radius: 4px;
-  flex-shrink: 0;
-}
-
-.dir-badge.local {
-  background: #dbeafe;
-  color: #1d4ed8;
-}
-
-.dir-badge.remote {
-  background: #fce7f3;
-  color: #9d174d;
-}
-
-.addr,
-.target {
-  font-family: 'SF Mono', 'Fira Code', monospace;
-  font-size: 10.5px;
-  color: #475569;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-
-:deep(.handle-right) {
-  width: 10px !important;
-  height: 10px !important;
-  background: #2563eb !important;
-  border: 2px solid white !important;
-}
+.tunnel-node.selected { border-color: #2563eb !important; }
+.tunnel-node:focus-visible { outline: 2px solid #2563eb; outline-offset: 2px; }
+.tunnel-top { display: flex; align-items: center; gap: 6px; padding: 10px 12px; border-bottom: 1px solid rgba(0, 0, 0, 0.06); }
+.icon { width: 14px; height: 14px; color: #64748b; flex-shrink: 0; }
+.name { font-weight: 600; font-size: 12px; color: #1e293b; flex: 1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.state-pill { display: inline-flex; align-items: center; gap: 4px; font-size: 10px; font-weight: 600; padding: 2px 6px 2px 5px; border-radius: 10px; border: 1px solid; flex-shrink: 0; }
+.state-dot { width: 6px; height: 6px; border-radius: 50%; flex-shrink: 0; }
+.tunnel-info { display: flex; flex-direction: column; gap: 6px; padding: 12px; }
+.line { display: flex; align-items: center; gap: 6px; }
+.dir-badge { font-family: 'SF Mono', 'Fira Code', monospace; font-size: 10px; font-weight: 700; padding: 1px 5px; border-radius: 4px; flex-shrink: 0; }
+.dir-badge.local { background: #dbeafe; color: #1d4ed8; }
+.dir-badge.remote { background: #fce7f3; color: #9d174d; }
+.addr, .target { font-family: 'SF Mono', 'Fira Code', monospace; font-size: 11px; color: #475569; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+:deep(.handle-right) { width: 10px !important; height: 10px !important; background: #2563eb !important; border: 2px solid white !important; }
 </style>

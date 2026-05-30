@@ -9,8 +9,8 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/HobaiRiku/ssh-tunnel-service/internal/config"
-	"github.com/HobaiRiku/ssh-tunnel-service/internal/services"
+	"ssh-tunnel-service/internal/config"
+	"ssh-tunnel-service/internal/services"
 )
 
 func tunnelCmd() *cobra.Command {

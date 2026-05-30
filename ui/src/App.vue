@@ -1,16 +1,23 @@
 <script setup lang="ts">
-import { NConfigProvider, NMessageProvider, darkTheme, useOsTheme } from 'naive-ui'
+import { NButton, NButtonGroup, NConfigProvider, NMessageProvider, darkTheme, useOsTheme } from 'naive-ui'
 import { RouterLink, useRoute } from 'vue-router'
 import { computed } from 'vue'
+import { useI18n, type Locale } from '@/i18n'
 
 const osTheme = useOsTheme()
 const theme = computed(() => osTheme.value === 'dark' ? darkTheme : null)
 const route = useRoute()
+const { locale, setLocale, t } = useI18n()
 
-const tabs = [
-  { label: 'Tunnels', to: '/tunnels' },
-  { label: 'Remotes', to: '/remotes' },
-]
+const tabs = computed(() => [
+  { label: t('app.tunnels'), to: '/tunnels' },
+  { label: t('app.remotes'), to: '/remotes' },
+  { label: t('app.keys'), to: '/keys' },
+])
+
+function switchLocale(next: Locale) {
+  setLocale(next)
+}
 </script>
 
 <template>
@@ -30,7 +37,7 @@ const tabs = [
               <circle cx="14" cy="9.5" r="1.5" fill="#60a5fa"/>
               <circle cx="18" cy="22.5" r="1.5" fill="#60a5fa"/>
             </svg>
-            <span class="brand-name">SSH Tunnel Service</span>
+            <span class="brand-name">{{ t('app.brand') }}</span>
           </div>
           <nav class="header-nav">
             <RouterLink
@@ -41,6 +48,10 @@ const tabs = [
               :class="{ active: route.path === tab.to }"
             >{{ tab.label }}</RouterLink>
           </nav>
+          <n-button-group size="small" class="locale-switcher">
+            <n-button :type="locale === 'en' ? 'primary' : 'default'" @click="switchLocale('en')">{{ t('app.english') }}</n-button>
+            <n-button :type="locale === 'zh-CN' ? 'primary' : 'default'" @click="switchLocale('zh-CN')">{{ t('app.chinese') }}</n-button>
+          </n-button-group>
         </header>
         <main class="app-content">
           <RouterView />
@@ -74,7 +85,7 @@ body {
   border-bottom: 1px solid #e2e8f0;
   box-shadow: 0 1px 3px rgba(0,0,0,0.06);
   flex-shrink: 0;
-  gap: 32px;
+  gap: 24px;
 }
 
 .header-brand {
@@ -86,20 +97,14 @@ body {
 }
 
 .brand-icon { width: 28px; height: 28px; flex-shrink: 0; }
-
-.brand-name {
-  font-weight: 700;
-  font-size: 14px;
-  color: #1e293b;
-  letter-spacing: -0.01em;
-  white-space: nowrap;
-}
+.brand-name { font-weight: 700; font-size: 14px; color: #1e293b; letter-spacing: -0.01em; white-space: nowrap; }
 
 .header-nav {
   display: flex;
   align-items: center;
   height: 100%;
   gap: 0;
+  flex: 1;
 }
 
 .nav-tab {
@@ -117,11 +122,8 @@ body {
 }
 
 .nav-tab:hover { color: #334155; }
-
-.nav-tab.active {
-  color: #2563eb;
-  border-bottom-color: #2563eb;
-}
+.nav-tab.active { color: #2563eb; border-bottom-color: #2563eb; }
+.locale-switcher { margin-left: auto; }
 
 .app-content {
   flex: 1;

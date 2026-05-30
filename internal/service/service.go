@@ -13,10 +13,10 @@ import (
 
 	kservice "github.com/kardianos/service"
 
-	"github.com/HobaiRiku/ssh-tunnel-service/internal/app"
-	"github.com/HobaiRiku/ssh-tunnel-service/internal/config"
-	applog "github.com/HobaiRiku/ssh-tunnel-service/internal/log"
-	"github.com/HobaiRiku/ssh-tunnel-service/internal/paths"
+	"ssh-tunnel-service/internal/app"
+	"ssh-tunnel-service/internal/config"
+	applog "ssh-tunnel-service/internal/log"
+	"ssh-tunnel-service/internal/paths"
 )
 
 const (
