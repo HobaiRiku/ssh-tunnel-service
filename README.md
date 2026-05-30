@@ -1,6 +1,6 @@
 # ssh-tunnel-service
 
-Cross-platform Go daemon that manages SSH `-L` / `-R` port-forwarding tunnels via a CLI, REST API, and an embedded Vue 3 web UI with interactive topology visualization.
+Cross-platform Go daemon that manages SSH `-L` / `-R` port-forwarding tunnels via a CLI, REST API, and an embedded Vue 3 web UI with interactive tunnel topology and SSH command previews.
 
 ## Features
 
@@ -9,7 +9,8 @@ Cross-platform Go daemon that manages SSH `-L` / `-R` port-forwarding tunnels vi
 - **YAML config** — all config driven by `~/.ssh-tunnel-service/config.yaml`
 - **API token auth** — generated on first run; injected into the web UI automatically
 - **Non-interactive SSH** — service-managed `known_hosts` trust store with configurable host-key policy
-- **Visual topology** — interactive flow diagram showing tunnels, remotes, and port mappings, grouped by remote
+- **Tunnel topology + table views** — switch between interactive topology and table layouts directly inside the Tunnels page
+- **Equivalent SSH command preview** — inspect the concrete ssh command the service will launch for each tunnel
 - **Daemon management** — install/start/stop/uninstall as a system service (launchd, systemd, SCM)
 - **AI-ready CLI** — structured JSON output for `remote list` and `tunnel list`
 - **PWA** — installable as a progressive web app from the browser

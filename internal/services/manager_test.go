@@ -128,6 +128,54 @@ func TestDiagnoseSSHFailure(t *testing.T) {
 	}
 }
 
+func TestCommandIncludesManagedTunnelOptions(t *testing.T) {
+	cfg := &config.Config{
+		App: config.AppConfig{
+			SSHHostKeyPolicy: config.SSHHostKeyPolicyAcceptNew,
+			SSHKnownHosts:    "/tmp/known_hosts",
+		},
+		Remotes: []config.Remote{{
+			ID: "remote-a", Host: "ssh.example.com", Port: 2222, User: "ubuntu",
+		}},
+		Tunnels: []config.Tunnel{{
+			ID: "tunnel-a", RemoteID: "remote-a", Direction: config.DirectionLocal,
+			BindAddress: "127.0.0.1", BindPort: 15432,
+			TargetHost: "db.internal", TargetPort: 5432,
+			SSHOptions: []string{"-o", "ServerAliveInterval=30"},
+		}},
+	}
+
+	rt := NewRuntime()
+	reg := New(cfg, paths.Paths{}, rt)
+	mgr := NewManager(reg, rt, slog.New(slog.NewTextHandler(io.Discard, nil)))
+
+	preview, err := mgr.Command("tunnel-a")
+	if err != nil {
+		t.Fatalf("Command returned error: %v", err)
+	}
+
+	joined := strings.Join(preview.Args, " ")
+	for _, want := range []string{
+		"-o BatchMode=yes",
+		"-o PasswordAuthentication=no",
+		"-o KbdInteractiveAuthentication=no",
+		"-o NumberOfPasswordPrompts=0",
+		"-o ExitOnForwardFailure=yes",
+		"-o StrictHostKeyChecking=accept-new",
+		"-o UserKnownHostsFile=/tmp/known_hosts",
+		"-L 127.0.0.1:15432:db.internal:5432",
+		"-o ServerAliveInterval=30",
+		"-p 2222 ubuntu@ssh.example.com",
+	} {
+		if !strings.Contains(joined, want) {
+			t.Fatalf("expected command args to contain %q, got %v", want, preview.Args)
+		}
+	}
+	if !strings.HasPrefix(preview.Command, "ssh ") {
+		t.Fatalf("expected preview command to start with ssh, got %q", preview.Command)
+	}
+}
+
 // TestStartMarksPasswordRemoteAsError verifies the end-to-end behaviour the
 // service depends on: when a remote only offers interactive (password) auth,
 // ssh exits non-interactively and the tunnel is recorded as an error instead
