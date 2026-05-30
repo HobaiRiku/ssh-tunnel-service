@@ -2,9 +2,7 @@ import { computed, ref } from 'vue'
 
 export type Locale = 'en' | 'zh-CN'
 
-type MessageValue = string | Record<string, MessageValue>
-
-const messages: Record<Locale, Record<string, MessageValue>> = {
+const messages = {
   en: {
     app: {
       brand: 'SSH Tunnel Service',
@@ -298,12 +296,12 @@ const locale = ref<Locale>(initialLocale === 'zh-CN' || initialLocale === 'en' ?
 
 function lookup(localeCode: Locale, key: string): string {
   const parts = key.split('.')
-  let value: MessageValue | undefined = messages[localeCode]
+  let value: unknown = messages[localeCode]
   for (const part of parts) {
-    if (typeof value !== 'object' || value === null || !(part in value)) {
+    if (typeof value !== 'object' || value === null || !Object.prototype.hasOwnProperty.call(value, part)) {
       return key
     }
-    value = value[part]
+    value = (value as Record<string, unknown>)[part]
   }
   return typeof value === 'string' ? value : key
 }
