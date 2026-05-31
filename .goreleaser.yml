@@ -10,7 +10,7 @@ before:
 builds:
   - id: ssh-tunnel-service
     main: .
-    binary: ssh-tunnel-service
+    binary: ssh-tunnel
     env:
       - CGO_ENABLED=0
     flags:
@@ -76,6 +76,6 @@ brews:
     license: MIT
     directory: Formula
     install: |
-      bin.install "ssh-tunnel-service"
+      bin.install "ssh-tunnel"
     test: |
-      system "#{bin}/ssh-tunnel-service", "version"
+      system "#{bin}/ssh-tunnel", "version"

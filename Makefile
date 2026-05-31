@@ -7,7 +7,7 @@
 #   make build         # Build release binary (runs ui-build, adds -tags embedui).
 #   make all           # Equivalent: ui-build + build
 
-APP_NAME    := ssh-tunnel-service
+APP_NAME    := ssh-tunnel
 PKG_VERSION := ssh-tunnel-service/internal/version
 
 VERSION ?= $(shell git describe --tags --always --dirty 2>/dev/null || echo dev)

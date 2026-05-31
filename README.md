@@ -28,23 +28,23 @@ brew install ssh-tunnel-service
 
 1. Open the [Releases](https://github.com/HobaiRiku/ssh-tunnel-service/releases) page.
 2. Download the archive matching your platform, for example `ssh-tunnel-service_v1.2.3_linux_amd64.tar.gz`.
-3. Extract it and move `ssh-tunnel-service` onto your `$PATH`.
+3. Extract it and move `ssh-tunnel` onto your `$PATH`.
 
 ```bash
 tar -xzf ssh-tunnel-service_v1.2.3_linux_amd64.tar.gz
-sudo install -m 0755 ssh-tunnel-service /usr/local/bin/ssh-tunnel-service
+sudo install -m 0755 ssh-tunnel /usr/local/bin/ssh-tunnel
 ```
 
 ### Windows binaries
 
 1. Download the matching `ssh-tunnel-service_v1.2.3_windows_amd64.zip` release artifact.
-2. Extract `ssh-tunnel-service.exe`.
+2. Extract `ssh-tunnel.exe`.
 3. Put it in a directory on your `PATH`, or run it directly from PowerShell.
 
 ```powershell
 Expand-Archive .\ssh-tunnel-service_v1.2.3_windows_amd64.zip -DestinationPath .\ssh-tunnel-service
 $env:Path += ';' + (Resolve-Path .\ssh-tunnel-service)
-ssh-tunnel-service.exe version
+ssh-tunnel.exe version
 ```
 
 ### `go install`
@@ -68,7 +68,7 @@ On first run the service generates an API token and writes it to `~/.ssh-tunnel-
 ## CLI reference
 
 ```text
-ssh-tunnel-service [command]
+ssh-tunnel [command]
 
 Commands:
   run         Run the service in the foreground
@@ -106,7 +106,7 @@ Commands:
 
 ```bash
 # Backend only
-go build .
+go build -o ssh-tunnel .
 
 # Full release binary with embedded SPA
 make build

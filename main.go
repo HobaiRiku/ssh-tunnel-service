@@ -1,4 +1,4 @@
-// Command ssh-tunnel-service manages SSH -L/-R tunnels as a cross-platform service.
+// Command ssh-tunnel manages SSH -L/-R tunnels as a cross-platform service.
 package main
 
 import (
