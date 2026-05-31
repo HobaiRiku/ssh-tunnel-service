@@ -19,7 +19,7 @@ import {
   NText,
   useMessage,
 } from 'naive-ui'
-import type { DataTableColumns, SelectOption } from 'naive-ui'
+import type { DataTableColumns } from 'naive-ui'
 import { api, getErrorMessage, type Tunnel, type TunnelStatus } from '@/api/client'
 import TunnelTopologyView from '@/components/TunnelTopologyView.vue'
 import { useI18n } from '@/i18n'
@@ -53,7 +53,7 @@ function createDefaultTunnel(): Tunnel {
     target_host: '',
     target_port: 0,
     ssh_options: [],
-    auto_start: false,
+    auto_start: true,
     description: '',
   }
 }
@@ -68,7 +68,7 @@ function toTunnelForm(tunnel: Tunnel | TunnelStatus): Tunnel {
     bind_port: tunnel.bind_port,
     target_host: tunnel.target_host,
     target_port: tunnel.target_port,
-    ssh_options: [...tunnel.ssh_options],
+    ssh_options: Array.isArray(tunnel.ssh_options) ? [...tunnel.ssh_options] : [],
     auto_start: tunnel.auto_start,
     description: tunnel.description,
   }
@@ -80,7 +80,6 @@ const remoteNameMap = computed(() => new Map(remoteStore.remotes.map((remote) =>
 
 type TunnelDirection = Tunnel['direction']
 type DirectionMeta = { value: TunnelDirection; code: string; title: string; summary: string; bindMeaning: string; targetMeaning: string }
-type DirectionOption = SelectOption & { value: TunnelDirection; label: string; meta: DirectionMeta }
 
 const directionMeta = computed<Record<TunnelDirection, DirectionMeta>>(() => ({
   '-L': {
@@ -101,46 +100,7 @@ const directionMeta = computed<Record<TunnelDirection, DirectionMeta>>(() => ({
   },
 }))
 
-function renderDirectionOption(option: DirectionOption) {
-  return h('div', { style: 'display:flex;flex-direction:column;gap:4px;line-height:1.4;padding:8px 0' }, [
-    h('div', { style: 'display:flex;align-items:center;gap:8px' }, [
-      h('span', { style: directionCodeStyle(option.meta.value) }, option.meta.code),
-      h('span', { style: 'font-size:13px;font-weight:700;color:#1e293b' }, option.meta.title),
-    ]),
-    h('div', { style: 'font-size:12px;color:#64748b;white-space:normal' }, option.meta.summary),
-  ])
-}
-
-const dirOptions = computed<DirectionOption[]>(() => Object.values(directionMeta.value).map((meta) => ({
-  value: meta.value,
-  label: `${meta.code} ${meta.title}`,
-  meta,
-  render: ({ option }) => isDirectionOption(option) ? renderDirectionOption(option) : String(option.label ?? ''),
-})))
-
-function isDirectionOption(option: SelectOption): option is DirectionOption {
-  return typeof option.value === 'string' && typeof option.label === 'string' && typeof option.meta === 'object' && option.meta !== null
-}
-
-function directionCodeStyle(direction: TunnelDirection) {
-  return direction === '-L'
-    ? 'display:inline-flex;align-items:center;padding:2px 6px;border-radius:999px;background:#dbeafe;color:#1d4ed8;font-family:monospace;font-size:11px;font-weight:700'
-    : 'display:inline-flex;align-items:center;padding:2px 6px;border-radius:999px;background:#fce7f3;color:#9d174d;font-family:monospace;font-size:11px;font-weight:700'
-}
-
-function renderDirectionLabel(option: SelectOption, selected: boolean) {
-  if (!isDirectionOption(option)) return String(option.label ?? '')
-
-  if (selected) {
-    return h('div', { style: 'display:flex;align-items:center;gap:8px;line-height:1;padding:2px 0' }, [
-      h('span', { style: directionCodeStyle(option.meta.value) }, option.meta.code),
-      h('span', { style: 'font-size:13px;font-weight:600;color:#1e293b' }, option.meta.title),
-    ])
-  }
-
-  return renderDirectionOption(option)
-}
-
+const directionList = computed<DirectionMeta[]>(() => [directionMeta.value['-L'], directionMeta.value['-R']])
 const selectedDirection = computed(() => directionMeta.value[form.value.direction] ?? directionMeta.value['-L'])
 const stateType: { [state in TunnelStatus['state']]: 'success' | 'default' | 'error' } = { running: 'success', stopped: 'default', error: 'error' }
 
@@ -350,7 +310,7 @@ onMounted(() => {
       </n-card>
     </div>
 
-    <n-modal v-model:show="showModal" :title="editingId ? t('tunnels.editTitle') : t('tunnels.addTitle')" preset="dialog" style="width:560px">
+    <n-modal v-model:show="showModal" :title="editingId ? t('tunnels.editTitle') : t('tunnels.addTitle')" preset="dialog" style="width:680px">
       <n-form label-placement="left" label-width="120" style="margin-top:8px">
         <n-form-item v-if="!editingId" :label="t('tunnels.fields.id')">
           <n-input v-model:value="form.id" placeholder="e.g. db-forward" />
@@ -362,13 +322,31 @@ onMounted(() => {
           <n-select v-model:value="form.remote_id" :options="remoteOptions" />
         </n-form-item>
         <n-form-item :label="t('tunnels.fields.direction')" class="direction-form-item">
-          <n-select
-            v-model:value="form.direction"
-            class="direction-select"
-            :options="dirOptions"
-            :render-label="renderDirectionLabel"
-            :consistent-menu-width="false"
-          />
+          <div class="direction-cards" role="radiogroup">
+            <label
+              v-for="meta in directionList"
+              :key="meta.value"
+              class="direction-card"
+              :class="[meta.value === '-L' ? 'local' : 'remote', { active: form.direction === meta.value }]"
+            >
+              <input
+                type="radio"
+                name="tunnel-direction"
+                class="direction-card-input"
+                :value="meta.value"
+                :checked="form.direction === meta.value"
+                @change="form.direction = meta.value"
+              />
+              <span class="direction-card-radio" aria-hidden="true"></span>
+              <span class="direction-card-body">
+                <span class="direction-card-head">
+                  <span class="direction-card-code">{{ meta.code }}</span>
+                  <span class="direction-card-title">{{ meta.title }}</span>
+                </span>
+                <span class="direction-card-summary">{{ meta.summary }}</span>
+              </span>
+            </label>
+          </div>
         </n-form-item>
         <n-form-item label=" " :show-feedback="false" class="direction-help-item">
           <div class="direction-help">
@@ -382,17 +360,19 @@ onMounted(() => {
             </div>
           </div>
         </n-form-item>
-        <n-form-item :label="t('tunnels.fields.bindAddress')">
-          <n-input v-model:value="form.bind_address" />
+        <n-form-item :label="t('tunnels.columns.bind')">
+          <div class="addr-row">
+            <n-input v-model:value="form.bind_address" class="addr-row-host" />
+            <span class="addr-row-sep">:</span>
+            <n-input-number v-model:value="form.bind_port" :min="1" :max="65535" :show-button="false" class="addr-row-port" />
+          </div>
         </n-form-item>
-        <n-form-item :label="t('tunnels.fields.bindPort')">
-          <n-input-number v-model:value="form.bind_port" :min="1" :max="65535" style="width:100%" />
-        </n-form-item>
-        <n-form-item :label="t('tunnels.fields.targetHost')">
-          <n-input v-model:value="form.target_host" />
-        </n-form-item>
-        <n-form-item :label="t('tunnels.fields.targetPort')">
-          <n-input-number v-model:value="form.target_port" :min="1" :max="65535" style="width:100%" />
+        <n-form-item :label="t('tunnels.columns.target')">
+          <div class="addr-row">
+            <n-input v-model:value="form.target_host" class="addr-row-host" />
+            <span class="addr-row-sep">:</span>
+            <n-input-number v-model:value="form.target_port" :min="1" :max="65535" :show-button="false" class="addr-row-port" />
+          </div>
         </n-form-item>
         <n-form-item :label="t('tunnels.fields.autoStart')">
           <n-switch v-model:value="form.auto_start" />
@@ -458,18 +438,78 @@ onMounted(() => {
 .page-title { font-size: 14px; font-weight: 600; color: #1e293b; }
 .page-body { flex: 1; overflow: auto; padding: 20px; }
 .content-card { border-radius: 12px; }
-.direction-form-item :deep(.n-base-selection-label) {
-  padding-top: 4px;
-  padding-bottom: 4px;
+.direction-cards {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+  width: 100%;
 }
 
-.direction-form-item :deep(.n-base-selection) {
-  min-height: 38px;
+.direction-card {
+  position: relative;
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  padding: 10px 12px;
+  border: 1.5px solid #e2e8f0;
+  border-radius: 10px;
+  background: #fff;
+  cursor: pointer;
+  transition: border-color 0.15s ease, box-shadow 0.15s ease, background 0.15s ease;
 }
 
-.direction-form-item :deep(.n-base-selection-input) {
-  min-height: auto;
+.direction-card:hover { border-color: #cbd5e1; }
+.direction-card.active.local { border-color: #1d4ed8; background: #eff6ff; box-shadow: 0 0 0 3px rgba(29, 78, 216, 0.1); }
+.direction-card.active.remote { border-color: #a21caf; background: #fdf4ff; box-shadow: 0 0 0 3px rgba(162, 28, 175, 0.1); }
+
+.direction-card-input { position: absolute; opacity: 0; pointer-events: none; }
+
+.direction-card-radio {
+  width: 14px;
+  height: 14px;
+  margin-top: 2px;
+  border-radius: 50%;
+  border: 1.5px solid #cbd5e1;
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: #fff;
 }
+
+.direction-card.active.local .direction-card-radio { border-color: #1d4ed8; }
+.direction-card.active.remote .direction-card-radio { border-color: #a21caf; }
+
+.direction-card.active .direction-card-radio::after {
+  content: '';
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: currentColor;
+}
+.direction-card.active.local .direction-card-radio::after { background: #1d4ed8; }
+.direction-card.active.remote .direction-card-radio::after { background: #a21caf; }
+
+.direction-card-body { display: flex; flex-direction: column; gap: 4px; line-height: 1.35; min-width: 0; }
+.direction-card-head { display: flex; align-items: center; gap: 6px; }
+.direction-card-code {
+  font-family: 'SF Mono', 'Fira Code', monospace;
+  font-size: 11px;
+  font-weight: 700;
+  padding: 1px 6px;
+  border-radius: 999px;
+  background: #f1f5f9;
+  color: #334155;
+}
+.direction-card.local .direction-card-code { background: #dbeafe; color: #1d4ed8; }
+.direction-card.remote .direction-card-code { background: #fce7f3; color: #9d174d; }
+.direction-card-title { font-size: 13px; font-weight: 600; color: #1e293b; }
+.direction-card-summary { font-size: 12px; color: #64748b; }
+
+.addr-row { display: flex; align-items: center; gap: 6px; width: 100%; }
+.addr-row-host { flex: 1; min-width: 0; }
+.addr-row-sep { color: #94a3b8; font-weight: 600; }
+.addr-row-port { width: 110px; flex-shrink: 0; }
 
 .direction-help-item {
   margin-top: -4px;

@@ -31,8 +31,8 @@ const labelPositionStyle = computed(() => ({
 
 const directionIcon = computed(() => (props.data?.direction === '-R' ? '←' : '→'))
 const directionClass = computed(() => (props.data?.direction === '-R' ? 'reverse' : 'forward'))
-const bindPortText = computed(() => (props.data?.bindPort == null ? '' : `:${props.data.bindPort}`))
-const targetPortText = computed(() => (props.data?.targetPort == null ? '' : `:${props.data.targetPort}`))
+const bindPortText = computed(() => (props.data?.bindPort == null ? '' : String(props.data.bindPort)))
+const targetPortText = computed(() => (props.data?.targetPort == null ? '' : String(props.data.targetPort)))
 </script>
 
 <template>
@@ -61,56 +61,33 @@ const targetPortText = computed(() => (props.data?.targetPort == null ? '' : `:$
 .tunnel-edge-label {
   position: absolute;
   display: inline-flex;
-  align-items: center;
-  gap: 8px;
-  padding: 7px 12px;
-  border-radius: 999px;
-  border: 1px solid #cbd5e1;
-  background: rgba(255, 255, 255, 0.99);
-  color: #334155;
-  box-shadow: 0 12px 28px rgba(15, 23, 42, 0.12);
-  font-size: 12px;
-  font-weight: 800;
-  line-height: 1;
-  letter-spacing: 0.02em;
+  align-items: baseline;
+  gap: 4px;
+  padding: 1px 6px;
+  background: rgba(255, 255, 255, 0.85);
+  color: #475569;
+  font-family: 'SF Mono', 'Fira Code', monospace;
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 1.2;
   pointer-events: none;
   z-index: 6;
-}
-
-.tunnel-edge-icon {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 16px;
-  height: 16px;
-  border-radius: 999px;
-  background: currentColor;
-  color: #fff;
-  font-size: 11px;
+  border-radius: 4px;
 }
 
 .tunnel-edge-port {
-  min-width: 54px;
-  padding: 4px 8px;
-  border-radius: 999px;
-  background: rgba(241, 245, 249, 0.9);
   color: #0f172a;
-  text-align: center;
-  font-family: 'SF Mono', 'Fira Code', monospace;
-  font-size: 11px;
 }
 
-.forward {
-  border-color: #bfdbfe;
-  color: #1d4ed8;
+.tunnel-edge-icon {
+  font-size: 13px;
+  font-weight: 700;
+  line-height: 1;
 }
 
-.reverse {
-  border-color: #f5d0fe;
-  color: #a21caf;
-}
+.forward .tunnel-edge-icon { color: #1d4ed8; }
+.reverse .tunnel-edge-icon { color: #a21caf; }
 
-.selected {
-  box-shadow: 0 14px 32px rgba(37, 99, 235, 0.2);
-}
+.selected .tunnel-edge-icon { color: #2563eb; }
+.selected .tunnel-edge-port { color: #1d4ed8; }
 </style>

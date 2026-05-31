@@ -94,12 +94,18 @@ const stateStyle = computed(() => {
 .dir-badge.remote { background: #fce7f3; color: #9d174d; }
 .addr, .target { font-family: 'SF Mono', 'Fira Code', monospace; font-size: 11px; color: #475569; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 :deep(.handle-right) {
-  width: 12px !important;
-  height: 12px !important;
-  right: -6px;
+  width: 10px !important;
+  height: 10px !important;
+  right: -5px;
   background: #2563eb !important;
-  border: 2px solid white !important;
-  box-shadow: 0 0 0 1px rgba(37, 99, 235, 0.2);
+  border: 2px solid #fff !important;
   z-index: 4;
+  animation: tunnel-handle-pulse 1.8s ease-out infinite;
+}
+
+@keyframes tunnel-handle-pulse {
+  0% { box-shadow: 0 0 0 0 rgba(37, 99, 235, 0.55); }
+  70% { box-shadow: 0 0 0 10px rgba(37, 99, 235, 0); }
+  100% { box-shadow: 0 0 0 0 rgba(37, 99, 235, 0); }
 }
 </style>

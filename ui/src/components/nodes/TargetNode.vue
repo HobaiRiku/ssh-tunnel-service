@@ -39,12 +39,18 @@ defineProps<{
 .sep { font-size: 11px; color: #7c3aed; }
 .port { font-size: 12px; color: #5b21b6; font-weight: 700; }
 :deep(.handle-left) {
-  width: 12px !important;
-  height: 12px !important;
-  left: -6px;
+  width: 10px !important;
+  height: 10px !important;
+  left: -5px;
   background: #7c3aed !important;
-  border: 2px solid white !important;
-  box-shadow: 0 0 0 1px rgba(124, 58, 237, 0.2);
+  border: 2px solid #fff !important;
   z-index: 4;
+  animation: target-handle-pulse 1.8s ease-out infinite;
+}
+
+@keyframes target-handle-pulse {
+  0% { box-shadow: 0 0 0 0 rgba(124, 58, 237, 0.55); }
+  70% { box-shadow: 0 0 0 10px rgba(124, 58, 237, 0); }
+  100% { box-shadow: 0 0 0 0 rgba(124, 58, 237, 0); }
 }
 </style>

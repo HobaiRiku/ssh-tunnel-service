@@ -140,10 +140,10 @@ const flowEdges = computed<Edge[]>(() => {
         selected: tunnel.id === props.selectedTunnelId,
       },
       markerStart: tunnel.direction === '-R'
-        ? { type: MarkerType.ArrowClosed, width: 12, height: 12, strokeWidth: 1.25, color: stroke }
+        ? { type: MarkerType.ArrowClosed, width: 22, height: 22, strokeWidth: 1, color: stroke, markerUnits: 'userSpaceOnUse' }
         : undefined,
       markerEnd: tunnel.direction === '-L'
-        ? { type: MarkerType.ArrowClosed, width: 12, height: 12, strokeWidth: 1.25, color: stroke }
+        ? { type: MarkerType.ArrowClosed, width: 22, height: 22, strokeWidth: 1, color: stroke, markerUnits: 'userSpaceOnUse' }
         : undefined,
       style: {
         stroke,
@@ -204,9 +204,6 @@ onMounted(() => {
       <p class="empty-sub">{{ t('topology.noTunnelsSub') }}</p>
     </div>
     <template v-else>
-      <div class="topology-toolbar">
-        <span>{{ t('topology.clickHint') }}</span>
-      </div>
       <VueFlow
         :nodes="flowNodes"
         :edges="flowEdges"
@@ -236,18 +233,6 @@ onMounted(() => {
   display: flex;
   flex-direction: column;
   gap: 12px;
-}
-
-.topology-toolbar {
-  display: flex;
-  align-items: center;
-  justify-content: flex-start;
-  gap: 12px;
-  padding: 10px 14px;
-  background: #eff6ff;
-  color: #1d4ed8;
-  border-radius: 12px;
-  font-size: 13px;
 }
 
 .flow {
