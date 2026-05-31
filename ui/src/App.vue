@@ -31,16 +31,21 @@ function switchLocale(next: Locale) {
       <div class="app-shell">
         <header class="app-header">
           <div class="header-brand">
-            <svg class="brand-icon" viewBox="0 0 32 32" fill="none" xmlns="http://www.w3.org/2000/svg">
-              <rect x="1" y="5" width="13" height="9" rx="2" fill="#2563eb"/>
-              <rect x="2" y="6" width="11" height="7" rx="1.5" fill="#3b82f6"/>
-              <circle cx="11" cy="9.5" r="1" fill="#bfdbfe"/>
-              <rect x="18" y="18" width="13" height="9" rx="2" fill="#1d4ed8"/>
-              <rect x="19" y="19" width="11" height="7" rx="1.5" fill="#2563eb"/>
-              <circle cx="28" cy="22.5" r="1" fill="#bfdbfe"/>
-              <path d="M14 9.5 Q20 9.5 20 16 Q20 22.5 18 22.5" stroke="#60a5fa" stroke-width="1.5" fill="none" stroke-linecap="round"/>
-              <circle cx="14" cy="9.5" r="1.5" fill="#60a5fa"/>
-              <circle cx="18" cy="22.5" r="1.5" fill="#60a5fa"/>
+            <svg class="brand-icon" viewBox="0 0 64 64" fill="none" xmlns="http://www.w3.org/2000/svg">
+              <defs>
+                <linearGradient id="brandBg" x1="0" y1="0" x2="64" y2="64" gradientUnits="userSpaceOnUse">
+                  <stop offset="0" stop-color="#3b82f6"/>
+                  <stop offset="1" stop-color="#1d4ed8"/>
+                </linearGradient>
+              </defs>
+              <rect x="0" y="0" width="64" height="64" rx="14" fill="url(#brandBg)"/>
+              <path d="M28 25 C 28 36 36 28 36 39" stroke="#ffffff" stroke-width="3.5" fill="none" stroke-linecap="round"/>
+              <circle cx="28" cy="25" r="2.7" fill="#ffffff"/>
+              <circle cx="36" cy="39" r="2.7" fill="#ffffff"/>
+              <rect x="10" y="14" width="20" height="13" rx="3" fill="#ffffff"/>
+              <circle cx="14.5" cy="20.5" r="1.6" fill="#2563eb"/>
+              <rect x="34" y="37" width="20" height="13" rx="3" fill="#ffffff"/>
+              <circle cx="49.5" cy="43.5" r="1.6" fill="#2563eb"/>
             </svg>
             <span class="brand-name">{{ t('app.brand') }}</span>
           </div>
