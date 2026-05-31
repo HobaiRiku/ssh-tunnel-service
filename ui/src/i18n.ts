@@ -46,6 +46,7 @@ const messages = {
       target: 'Target',
       remote: 'Remote',
       state: 'State',
+      allRemotes: 'All',
     },
     tunnels: {
       title: 'Tunnels',
@@ -189,6 +190,7 @@ const messages = {
       target: '目标',
       remote: '远端',
       state: '状态',
+      allRemotes: '全部',
     },
     tunnels: {
       title: '隧道',
