@@ -27,22 +27,22 @@ brew install ssh-tunnel-service
 ### Linux / macOS binaries
 
 1. Open the [Releases](https://github.com/HobaiRiku/ssh-tunnel-service/releases) page.
-2. Download the archive matching your platform, for example `ssh-tunnel-service_v1.2.3_linux_amd64.tar.gz`.
+2. Download the archive matching your platform, for example `ssh-tunnel-service_*_linux_amd64.tar.gz`.
 3. Extract it and move `ssh-tunnel` onto your `$PATH`.
 
 ```bash
-tar -xzf ssh-tunnel-service_v1.2.3_linux_amd64.tar.gz
+tar -xzf ssh-tunnel-service_*_linux_amd64.tar.gz
 sudo install -m 0755 ssh-tunnel /usr/local/bin/ssh-tunnel
 ```
 
 ### Windows binaries
 
-1. Download the matching `ssh-tunnel-service_v1.2.3_windows_amd64.zip` release artifact.
+1. Download the matching `ssh-tunnel-service_*_windows_amd64.zip` release artifact.
 2. Extract `ssh-tunnel.exe`.
 3. Put it in a directory on your `PATH`, or run it directly from PowerShell.
 
 ```powershell
-Expand-Archive .\ssh-tunnel-service_v1.2.3_windows_amd64.zip -DestinationPath .\ssh-tunnel-service
+Expand-Archive .\ssh-tunnel-service_*_windows_amd64.zip -DestinationPath .\ssh-tunnel-service
 $env:Path += ';' + (Resolve-Path .\ssh-tunnel-service)
 ssh-tunnel.exe version
 ```
