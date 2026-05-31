@@ -16,7 +16,7 @@ var rootFlags struct {
 // Root returns the wired cobra root command.
 func Root() *cobra.Command {
 	root := &cobra.Command{
-		Use:           "ssh-tunnel-service",
+		Use:           "ssh-tunnel",
 		Short:         "Manage SSH -L/-R port-forwarding tunnels as a service",
 		SilenceUsage:  true,
 		SilenceErrors: false,

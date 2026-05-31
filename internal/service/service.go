@@ -222,7 +222,7 @@ func loadOrGenerateToken(tokenPath string, mode os.FileMode) (string, error) {
 	if err := os.WriteFile(tokenPath, []byte(t+"\n"), mode); err != nil {
 		return "", fmt.Errorf("write token file %s: %w", tokenPath, err)
 	}
-	fmt.Fprintf(os.Stderr, "ssh-tunnel-service: generated new API token → %s\n", tokenPath)
+	fmt.Fprintf(os.Stderr, "ssh-tunnel: generated new API token → %s\n", tokenPath)
 	return t, nil
 }
 
