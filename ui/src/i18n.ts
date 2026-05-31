@@ -295,18 +295,18 @@ const initialLocale = parseLocale(typeof localStorage !== 'undefined' ? localSto
 const locale = ref<Locale>(initialLocale === 'zh-CN' || initialLocale === 'en' ? initialLocale : browserLocale)
 
 function parseLocale(value: string | null): Locale | null {
-	return value === 'zh-CN' || value === 'en' ? value : null
+  return value === 'zh-CN' || value === 'en' ? value : null
 }
 
 function resolveBrowserLocale(): Locale {
-	if (typeof navigator === 'undefined') {
-		return 'en'
-	}
-	const normalized = navigator.language.toLowerCase()
-	if (normalized === 'zh-cn' || normalized.startsWith('zh-hans')) {
-		return 'zh-CN'
-	}
-	return 'en'
+  if (typeof navigator === 'undefined') {
+    return 'en'
+  }
+  const normalized = navigator.language.toLowerCase()
+  if (normalized === 'zh-cn' || normalized.startsWith('zh-hans')) {
+    return 'zh-CN'
+  }
+  return 'en'
 }
 
 function lookup(localeCode: Locale, key: string): string {
