@@ -28,16 +28,31 @@ builds:
     goarch:
       - amd64
       - arm64
+  - id: ssh-tunnel-service-linux-armv7
+    main: .
+    binary: ssh-tunnel
+    env:
+      - CGO_ENABLED=0
+    flags:
+      - -trimpath
+      - -tags=embedui
+    ldflags:
+      - -s -w
+      - -X ssh-tunnel-service/internal/version.Version={{ .Version }}
+      - -X ssh-tunnel-service/internal/version.Commit={{ .Commit }}
+      - -X ssh-tunnel-service/internal/version.BuildDate={{ .Date }}
+    goos:
+      - linux
+    goarch:
+      - arm
     goarm:
       - "7"
-    ignore:
-      - goos: windows
-        goarch: arm
 
 archives:
   - id: default
     ids:
       - ssh-tunnel-service
+      - ssh-tunnel-service-linux-armv7
     formats:
       - tar.gz
     format_overrides:
@@ -66,7 +81,8 @@ release:
 brews:
   - name: ssh-tunnel-service
     ids:
-      - ssh-tunnel-service
+      - default
+    goarm: 7
     repository:
       owner: HobaiRiku
       name: homebrew-tap
