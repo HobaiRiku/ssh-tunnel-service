@@ -7,6 +7,7 @@ import (
 	"io"
 	"log/slog"
 	"os"
+	"path/filepath"
 	"runtime"
 	"strings"
 	"sync"
@@ -85,6 +86,9 @@ func RunService(home string) error {
 
 // Install registers the service with the OS service manager.
 func Install(home string) error {
+	if err := validateInstallExecutable(); err != nil {
+		return err
+	}
 	svc, _, err := New(home)
 	if err != nil {
 		return err
@@ -108,7 +112,7 @@ func Uninstall(home string) error {
 
 // Start requests the OS to start the registered service.
 func Start(home string) error {
-	if started, err := darwinKickstart(); started {
+	if started, err := darwinStart(); started {
 		return err
 	}
 	svc, _, err := New(home)
@@ -120,7 +124,7 @@ func Start(home string) error {
 
 // Stop requests the OS to stop the registered service.
 func Stop(home string) error {
-	if stopped, err := darwinKill(); stopped {
+	if stopped, err := darwinStop(); stopped {
 		return err
 	}
 	svc, _, err := New(home)
@@ -128,6 +132,32 @@ func Stop(home string) error {
 		return err
 	}
 	return svc.Stop()
+}
+
+func validateInstallExecutable() error {
+	exe, err := os.Executable()
+	if err != nil {
+		return fmt.Errorf("resolve current executable: %w", err)
+	}
+	resolved := exe
+	if real, err := filepath.EvalSymlinks(exe); err == nil {
+		resolved = real
+	}
+	cleaned := filepath.Clean(resolved)
+	tempRoots := []string{filepath.Clean(os.TempDir())}
+	if realTemp, err := filepath.EvalSymlinks(os.TempDir()); err == nil {
+		tempRoots = append(tempRoots, filepath.Clean(realTemp))
+	}
+	for _, root := range tempRoots {
+		prefix := root
+		if !strings.HasSuffix(prefix, string(os.PathSeparator)) {
+			prefix += string(os.PathSeparator)
+		}
+		if strings.HasPrefix(cleaned, prefix) && strings.Contains(cleaned, string(os.PathSeparator)+"go-build") {
+			return fmt.Errorf("refusing to install from temporary `go run` executable %s; build or install a stable binary first", resolved)
+		}
+	}
+	return nil
 }
 
 // Status returns the OS service status.

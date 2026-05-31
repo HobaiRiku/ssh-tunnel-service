@@ -32,9 +32,11 @@ func darwinPlistPath() (string, error) {
 }
 
 func darwinBootout() {
-	// Idempotent best-effort: ignore "service not found" — we just want to
-	// guarantee any stale registration is gone.
-	_ = exec.Command("launchctl", "bootout", darwinServiceTarget()).Run()
+	plist, err := darwinPlistPath()
+	if err == nil {
+		_, _ = runLaunchctl("bootout", darwinUserDomain(), plist)
+	}
+	_, _ = runLaunchctl("bootout", darwinServiceTarget())
 }
 
 func darwinBootstrap() error {
@@ -49,18 +51,65 @@ func darwinBootstrap() error {
 	return nil
 }
 
-func darwinKickstart() (bool, error) {
-	out, err := exec.Command("launchctl", "kickstart", darwinServiceTarget()).CombinedOutput()
+func darwinStart() (bool, error) {
+	loaded, err := darwinServiceLoaded()
 	if err != nil {
-		return true, fmt.Errorf("launchctl kickstart: %s: %w", strings.TrimSpace(string(out)), err)
+		return true, err
+	}
+	if !loaded {
+		return true, darwinBootstrap()
+	}
+	if _, err := runLaunchctl("kickstart", "-k", darwinServiceTarget()); err != nil {
+		return true, err
 	}
 	return true, nil
 }
 
-func darwinKill() (bool, error) {
-	out, err := exec.Command("launchctl", "kill", "SIGTERM", darwinServiceTarget()).CombinedOutput()
+func darwinStop() (bool, error) {
+	plist, err := darwinPlistPath()
 	if err != nil {
-		return true, fmt.Errorf("launchctl kill: %s: %w", strings.TrimSpace(string(out)), err)
+		return true, fmt.Errorf("locate plist: %w", err)
+	}
+	if _, err := runLaunchctl("bootout", darwinUserDomain(), plist); err != nil {
+		if isLaunchctlNotFound(err) {
+			return true, nil
+		}
+		return true, err
 	}
 	return true, nil
+}
+
+func darwinServiceLoaded() (bool, error) {
+	_, err := runLaunchctl("print", darwinServiceTarget())
+	if err == nil {
+		return true, nil
+	}
+	if isLaunchctlNotFound(err) {
+		return false, nil
+	}
+	return false, err
+}
+
+func runLaunchctl(args ...string) (string, error) {
+	out, err := exec.Command("launchctl", args...).CombinedOutput()
+	if err != nil {
+		msg := strings.TrimSpace(string(out))
+		if msg == "" {
+			msg = err.Error()
+		}
+		return "", fmt.Errorf("launchctl %s: %s: %w", strings.Join(args, " "), msg, err)
+	}
+	return strings.TrimSpace(string(out)), nil
+}
+
+func isLaunchctlNotFound(err error) bool {
+	if err == nil {
+		return false
+	}
+	msg := err.Error()
+	return strings.Contains(msg, "service not found") ||
+		strings.Contains(msg, "Could not find service") ||
+		strings.Contains(msg, "Could not find specified service") ||
+		strings.Contains(msg, "No such process") ||
+		strings.Contains(msg, "Bad request")
 }

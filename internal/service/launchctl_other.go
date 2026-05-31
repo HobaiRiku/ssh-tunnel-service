@@ -4,5 +4,5 @@ package service
 
 func darwinBootout()                 {}
 func darwinBootstrap() error         { return nil }
-func darwinKickstart() (bool, error) { return false, nil }
-func darwinKill() (bool, error)      { return false, nil }
+func darwinStart() (bool, error)     { return false, nil }
+func darwinStop() (bool, error)      { return false, nil }

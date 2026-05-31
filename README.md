@@ -51,6 +51,8 @@ ssh-tunnel.exe version
 
 `go install` is intentionally **not supported**. The module path is `ssh-tunnel-service` rather than a `github.com/...` import path so releases are consumed from Homebrew or prebuilt binaries instead.
 
+Likewise, **do not run `install` from `go run .`**. launchd/systemd/SCM need a stable executable path, so install the service from a release binary or a built binary already placed on your `PATH`.
+
 ## Quick start
 
 ```bash
@@ -77,6 +79,7 @@ Commands:
   start       Start the installed service
   stop        Stop the installed service
   status      Show service status
+  tail        Tail the current service log in real time
 
   remote      Manage remote SSH targets
     list      List remotes (--json for machine-readable output)

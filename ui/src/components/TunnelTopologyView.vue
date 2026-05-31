@@ -50,6 +50,23 @@ const TUNNEL_INDENT = (GROUP_W - TUNNEL_W) / 2
 const TARGET_X = 620
 const GROUP_GAP = 40
 
+type Endpoint = {
+  host: string
+  port: number
+}
+
+function getRemoteEndpoint(tunnel: TunnelStatus): Endpoint {
+  return tunnel.direction === '-L'
+    ? { host: tunnel.target_host, port: tunnel.target_port }
+    : { host: tunnel.bind_address, port: tunnel.bind_port }
+}
+
+function getLocalEndpoint(tunnel: TunnelStatus): Endpoint {
+  return tunnel.direction === '-L'
+    ? { host: tunnel.bind_address, port: tunnel.bind_port }
+    : { host: tunnel.target_host, port: tunnel.target_port }
+}
+
 const isEmpty = computed(() => !props.loading && props.remotes.length === 0)
 const hasTunnels = computed(() => props.tunnels.length > 0)
 
@@ -77,6 +94,8 @@ const flowNodes = computed<Node[]>(() => {
       const childY = GROUP_HEADER_H + GROUP_PAD_TOP + index * TUNNEL_SLOT_H
       const absY = yOffset + childY
       const onSelect = () => emit('select', tunnel)
+      const remoteEndpoint = getRemoteEndpoint(tunnel)
+      const localEndpoint = getLocalEndpoint(tunnel)
 
       nodes.push({
         id: `tunnel-${tunnel.id}`,
@@ -87,10 +106,10 @@ const flowNodes = computed<Node[]>(() => {
         data: {
           label: tunnel.name || tunnel.id,
           direction: tunnel.direction,
-          bindAddress: tunnel.bind_address,
-          bindPort: tunnel.bind_port,
-          targetHost: tunnel.target_host,
-          targetPort: tunnel.target_port,
+          remoteHost: remoteEndpoint.host,
+          remotePort: remoteEndpoint.port,
+          localHost: localEndpoint.host,
+          localPort: localEndpoint.port,
           state: tunnel.state,
           selected: tunnel.id === props.selectedTunnelId,
           onSelect,
@@ -104,7 +123,12 @@ const flowNodes = computed<Node[]>(() => {
         id: `target-${tunnel.id}`,
         type: 'target',
         position: { x: TARGET_X, y: absY + 38 },
-        data: { host: tunnel.target_host, port: tunnel.target_port, selected: tunnel.id === props.selectedTunnelId, onSelect },
+        data: {
+          host: localEndpoint.host,
+          port: localEndpoint.port,
+          selected: tunnel.id === props.selectedTunnelId,
+          onSelect,
+        },
         draggable: false,
         selectable: false,
         zIndex: 1,
@@ -119,6 +143,8 @@ const flowNodes = computed<Node[]>(() => {
 
 const flowEdges = computed<Edge[]>(() => {
   return props.tunnels.map((tunnel) => {
+    const remoteEndpoint = getRemoteEndpoint(tunnel)
+    const localEndpoint = getLocalEndpoint(tunnel)
     const stroke = tunnel.id === props.selectedTunnelId
       ? '#2563eb'
       : tunnel.state === 'running'
@@ -134,17 +160,11 @@ const flowEdges = computed<Edge[]>(() => {
       type: 'tunnel',
       animated: tunnel.state === 'running',
       data: {
-        direction: tunnel.direction,
-        bindPort: tunnel.bind_port,
-        targetPort: tunnel.target_port,
+        remotePort: remoteEndpoint.port,
+        localPort: localEndpoint.port,
         selected: tunnel.id === props.selectedTunnelId,
       },
-      markerStart: tunnel.direction === '-R'
-        ? { type: MarkerType.ArrowClosed, width: 22, height: 22, strokeWidth: 1, color: stroke, markerUnits: 'userSpaceOnUse' }
-        : undefined,
-      markerEnd: tunnel.direction === '-L'
-        ? { type: MarkerType.ArrowClosed, width: 22, height: 22, strokeWidth: 1, color: stroke, markerUnits: 'userSpaceOnUse' }
-        : undefined,
+      markerEnd: { type: MarkerType.ArrowClosed, width: 22, height: 22, strokeWidth: 1, color: stroke, markerUnits: 'userSpaceOnUse' },
       style: {
         stroke,
         strokeWidth: tunnel.id === props.selectedTunnelId ? 3.2 : 2.4,

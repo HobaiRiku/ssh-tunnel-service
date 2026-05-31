@@ -7,10 +7,10 @@ const props = defineProps<{
   data: {
     label: string
     direction: string
-    bindAddress: string
-    bindPort: number
-    targetHost: string
-    targetPort: number
+    remoteHost: string
+    remotePort: number
+    localHost: string
+    localPort: number
     state: string
     selected?: boolean
     onSelect?: () => void
@@ -55,9 +55,14 @@ const stateStyle = computed(() => {
     <div class="tunnel-info">
       <div class="line">
         <span class="dir-badge" :class="data.direction === '-L' ? 'local' : 'remote'">{{ data.direction }}</span>
-        <span class="addr">{{ data.bindAddress }}:{{ data.bindPort }}</span>
+        <span class="endpoint-label">{{ t('topology.remote') }}</span>
+        <span class="addr">{{ data.remoteHost }}:{{ data.remotePort }}</span>
       </div>
-      <div class="target">→ {{ data.targetHost }}:{{ data.targetPort }}</div>
+      <div class="target">
+        <span class="target-arrow" aria-hidden="true">→</span>
+        <span class="endpoint-label endpoint-label--local">{{ t('topology.local') }}</span>
+        <span class="addr">{{ data.localHost }}:{{ data.localPort }}</span>
+      </div>
     </div>
     <Handle type="source" :position="Position.Right" class="handle-right" />
   </div>
@@ -89,10 +94,30 @@ const stateStyle = computed(() => {
 .state-dot { width: 6px; height: 6px; border-radius: 50%; flex-shrink: 0; }
 .tunnel-info { display: flex; flex-direction: column; gap: 6px; padding: 12px; }
 .line { display: flex; align-items: center; gap: 6px; }
+.endpoint-label {
+  font-size: 10px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: #64748b;
+  flex-shrink: 0;
+}
+.endpoint-label--local { color: #7c3aed; }
+.target {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.target-arrow {
+  font-size: 13px;
+  font-weight: 700;
+  color: #2563eb;
+  flex-shrink: 0;
+}
 .dir-badge { font-family: 'SF Mono', 'Fira Code', monospace; font-size: 10px; font-weight: 700; padding: 1px 5px; border-radius: 4px; flex-shrink: 0; }
 .dir-badge.local { background: #dbeafe; color: #1d4ed8; }
 .dir-badge.remote { background: #fce7f3; color: #9d174d; }
-.addr, .target { font-family: 'SF Mono', 'Fira Code', monospace; font-size: 11px; color: #475569; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.addr { font-family: 'SF Mono', 'Fira Code', monospace; font-size: 11px; color: #475569; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 :deep(.handle-right) {
   width: 10px !important;
   height: 10px !important;

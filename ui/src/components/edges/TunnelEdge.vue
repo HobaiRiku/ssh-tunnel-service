@@ -4,9 +4,8 @@ import { BaseEdge, EdgeLabelRenderer, getSmoothStepPath } from '@vue-flow/core'
 import type { EdgeProps } from '@vue-flow/core'
 
 type TunnelEdgeData = {
-  direction?: '-L' | '-R'
-  bindPort?: number
-  targetPort?: number
+  remotePort?: number
+  localPort?: number
   selected?: boolean
 }
 
@@ -29,10 +28,8 @@ const labelPositionStyle = computed(() => ({
   transform: `translate(-50%, -50%) translate(${edgePath.value[1]}px, ${edgePath.value[2]}px)`,
 }))
 
-const directionIcon = computed(() => (props.data?.direction === '-R' ? '←' : '→'))
-const directionClass = computed(() => (props.data?.direction === '-R' ? 'reverse' : 'forward'))
-const bindPortText = computed(() => (props.data?.bindPort == null ? '' : String(props.data.bindPort)))
-const targetPortText = computed(() => (props.data?.targetPort == null ? '' : String(props.data.targetPort)))
+const remotePortText = computed(() => (props.data?.remotePort == null ? '' : String(props.data.remotePort)))
+const localPortText = computed(() => (props.data?.localPort == null ? '' : String(props.data.localPort)))
 </script>
 
 <template>
@@ -47,12 +44,12 @@ const targetPortText = computed(() => (props.data?.targetPort == null ? '' : Str
   <EdgeLabelRenderer>
     <div
       class="tunnel-edge-label nodrag nopan"
-      :class="[directionClass, { selected: data?.selected }]"
+      :class="{ selected: data?.selected }"
       :style="labelPositionStyle"
     >
-      <span class="tunnel-edge-port">{{ bindPortText }}</span>
-      <span class="tunnel-edge-icon" aria-hidden="true">{{ directionIcon }}</span>
-      <span class="tunnel-edge-port">{{ targetPortText }}</span>
+      <span class="tunnel-edge-port">{{ remotePortText }}</span>
+      <span class="tunnel-edge-icon" aria-hidden="true">→</span>
+      <span class="tunnel-edge-port">{{ localPortText }}</span>
     </div>
   </EdgeLabelRenderer>
 </template>
@@ -83,10 +80,8 @@ const targetPortText = computed(() => (props.data?.targetPort == null ? '' : Str
   font-size: 13px;
   font-weight: 700;
   line-height: 1;
+  color: #1d4ed8;
 }
-
-.forward .tunnel-edge-icon { color: #1d4ed8; }
-.reverse .tunnel-edge-icon { color: #a21caf; }
 
 .selected .tunnel-edge-icon { color: #2563eb; }
 .selected .tunnel-edge-port { color: #1d4ed8; }
