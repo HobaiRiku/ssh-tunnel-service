@@ -290,9 +290,24 @@ const messages = {
 }
 
 const storageKey = 'ssh-tunnel-service.locale'
-const browserLocale = typeof navigator !== 'undefined' && navigator.language.toLowerCase().startsWith('zh') ? 'zh-CN' : 'en'
-const initialLocale = (typeof localStorage !== 'undefined' ? localStorage.getItem(storageKey) : null) as Locale | null
+const browserLocale = resolveBrowserLocale()
+const initialLocale = parseLocale(typeof localStorage !== 'undefined' ? localStorage.getItem(storageKey) : null)
 const locale = ref<Locale>(initialLocale === 'zh-CN' || initialLocale === 'en' ? initialLocale : browserLocale)
+
+function parseLocale(value: string | null): Locale | null {
+	return value === 'zh-CN' || value === 'en' ? value : null
+}
+
+function resolveBrowserLocale(): Locale {
+	if (typeof navigator === 'undefined') {
+		return 'en'
+	}
+	const normalized = navigator.language.toLowerCase()
+	if (normalized === 'zh-cn' || normalized.startsWith('zh-hans')) {
+		return 'zh-CN'
+	}
+	return 'en'
+}
 
 function lookup(localeCode: Locale, key: string): string {
   const parts = key.split('.')
