@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, h, onMounted, ref } from 'vue'
+import { computed, h, nextTick, onMounted, ref } from 'vue'
 import {
   NAlert,
   NButton,
@@ -101,40 +101,66 @@ const directionMeta = computed<Record<TunnelDirection, DirectionMeta>>(() => ({
   },
 }))
 
+function renderDirectionOption(option: DirectionOption) {
+  return h('div', { style: 'display:flex;flex-direction:column;gap:4px;line-height:1.4;padding:8px 0' }, [
+    h('div', { style: 'display:flex;align-items:center;gap:8px' }, [
+      h('span', { style: directionCodeStyle(option.meta.value) }, option.meta.code),
+      h('span', { style: 'font-size:13px;font-weight:700;color:#1e293b' }, option.meta.title),
+    ]),
+    h('div', { style: 'font-size:12px;color:#64748b;white-space:normal' }, option.meta.summary),
+  ])
+}
+
 const dirOptions = computed<DirectionOption[]>(() => Object.values(directionMeta.value).map((meta) => ({
   value: meta.value,
-  label: `${meta.code} ${meta.title} — ${meta.summary}`,
+  label: `${meta.code} ${meta.title}`,
   meta,
+  render: ({ option }) => isDirectionOption(option) ? renderDirectionOption(option) : String(option.label ?? ''),
 })))
 
 function isDirectionOption(option: SelectOption): option is DirectionOption {
   return typeof option.value === 'string' && typeof option.label === 'string' && typeof option.meta === 'object' && option.meta !== null
 }
 
-function renderDirectionLabel(option: SelectOption) {
-  if (!isDirectionOption(option)) return String(option.label ?? '')
-  return h('div', { style: 'display:flex;flex-direction:column;gap:2px;line-height:1.4;padding:2px 0' }, [
-    h('div', { style: 'font-family:monospace;font-weight:600;font-size:13px;color:#1e293b' }, `${option.meta.code} ${option.meta.title}`),
-    h('div', { style: 'font-size:12px;color:#64748b;white-space:normal' }, option.meta.summary),
-  ])
+function directionCodeStyle(direction: TunnelDirection) {
+  return direction === '-L'
+    ? 'display:inline-flex;align-items:center;padding:2px 6px;border-radius:999px;background:#dbeafe;color:#1d4ed8;font-family:monospace;font-size:11px;font-weight:700'
+    : 'display:inline-flex;align-items:center;padding:2px 6px;border-radius:999px;background:#fce7f3;color:#9d174d;font-family:monospace;font-size:11px;font-weight:700'
 }
 
-const selectedDirection = computed(() => directionMeta.value[form.value.direction])
+function renderDirectionLabel(option: SelectOption, selected: boolean) {
+  if (!isDirectionOption(option)) return String(option.label ?? '')
+
+  if (selected) {
+    return h('div', { style: 'display:flex;align-items:center;gap:8px;line-height:1;padding:2px 0' }, [
+      h('span', { style: directionCodeStyle(option.meta.value) }, option.meta.code),
+      h('span', { style: 'font-size:13px;font-weight:600;color:#1e293b' }, option.meta.title),
+    ])
+  }
+
+  return renderDirectionOption(option)
+}
+
+const selectedDirection = computed(() => directionMeta.value[form.value.direction] ?? directionMeta.value['-L'])
 const stateType: { [state in TunnelStatus['state']]: 'success' | 'default' | 'error' } = { running: 'success', stopped: 'default', error: 'error' }
 
 function resetForm() {
   form.value = createDefaultTunnel()
 }
 
-function openAdd() {
+async function openAdd() {
+  showModal.value = false
   editingId.value = null
   resetForm()
+  await nextTick()
   showModal.value = true
 }
 
-function openEdit(row: TunnelStatus) {
+async function openEdit(row: TunnelStatus) {
+  showModal.value = false
   editingId.value = row.id
   form.value = toTunnelForm(row)
+  await nextTick()
   showModal.value = true
 }
 
@@ -209,17 +235,21 @@ async function actionStop() {
   await doStop(activeTunnel.value.id)
 }
 
-function actionEdit() {
+async function actionEdit() {
   if (!activeTunnel.value) return
   const tunnel = activeTunnel.value
   closeActions()
-  openEdit(tunnel)
+  await nextTick()
+  await new Promise<void>((resolve) => window.setTimeout(resolve, 0))
+  await openEdit(tunnel)
 }
 
 async function actionCommand() {
   if (!activeTunnel.value) return
   const tunnel = activeTunnel.value
   closeActions()
+  await nextTick()
+  await new Promise<void>((resolve) => window.setTimeout(resolve, 0))
   await openCommand(tunnel)
 }
 
@@ -267,7 +297,7 @@ const columns = computed<DataTableColumns<TunnelStatus>>(() => [
         row.state !== 'running'
           ? h(NButton, { size: 'tiny', type: 'success', onClick: () => { void doStart(row.id) } }, { default: () => t('common.start') })
           : h(NButton, { size: 'tiny', type: 'warning', onClick: () => { void doStop(row.id) } }, { default: () => t('common.stop') }),
-        h(NButton, { size: 'tiny', secondary: true, onClick: () => openEdit(row) }, { default: () => t('common.edit') }),
+        h(NButton, { size: 'tiny', secondary: true, onClick: () => { void openEdit(row) } }, { default: () => t('common.edit') }),
         h(NButton, { size: 'tiny', tertiary: true, onClick: () => { void openCommand(row) } }, { default: () => t('common.ssh') }),
         h(NPopconfirm, { onPositiveClick: () => doDelete(row.id) }, {
           trigger: () => h(NButton, { size: 'tiny', type: 'error', ghost: true }, { default: () => t('common.delete') }),
@@ -293,7 +323,7 @@ onMounted(() => {
           <n-button :type="viewMode === 'table' ? 'primary' : 'default'" @click="viewMode = 'table'">{{ t('common.table') }}</n-button>
         </n-button-group>
         <n-button secondary :loading="tunnelStore.loading || remoteStore.loading" @click="refresh">{{ t('common.refresh') }}</n-button>
-        <n-button type="primary" @click="openAdd">{{ t('common.add') }}</n-button>
+        <n-button type="primary" @click="void openAdd()">{{ t('common.add') }}</n-button>
       </n-space>
     </div>
 
@@ -331,10 +361,16 @@ onMounted(() => {
         <n-form-item :label="t('tunnels.fields.remote')">
           <n-select v-model:value="form.remote_id" :options="remoteOptions" />
         </n-form-item>
-        <n-form-item :label="t('tunnels.fields.direction')">
-          <n-select v-model:value="form.direction" :options="dirOptions" :render-label="renderDirectionLabel" />
+        <n-form-item :label="t('tunnels.fields.direction')" class="direction-form-item">
+          <n-select
+            v-model:value="form.direction"
+            class="direction-select"
+            :options="dirOptions"
+            :render-label="renderDirectionLabel"
+            :consistent-menu-width="false"
+          />
         </n-form-item>
-        <n-form-item label=" " :show-feedback="false">
+        <n-form-item label=" " :show-feedback="false" class="direction-help-item">
           <div class="direction-help">
             <div class="direction-help-row">
               <span class="direction-help-tag">Bind</span>
@@ -394,9 +430,8 @@ onMounted(() => {
             {{ t('tunnels.deleteConfirm') }}
           </n-popconfirm>
           <n-space>
-            <n-button @click="closeActions">{{ t('common.close') }}</n-button>
-            <n-button secondary @click="actionCommand">{{ t('common.ssh') }}</n-button>
-            <n-button secondary @click="actionEdit">{{ t('common.edit') }}</n-button>
+            <n-button secondary @click="void actionCommand()">{{ t('common.ssh') }}</n-button>
+            <n-button secondary @click="void actionEdit()">{{ t('common.edit') }}</n-button>
             <n-button v-if="actionState !== 'running'" type="success" @click="actionStart">{{ t('common.start') }}</n-button>
             <n-button v-else type="warning" @click="actionStop">{{ t('common.stop') }}</n-button>
           </n-space>
@@ -423,7 +458,35 @@ onMounted(() => {
 .page-title { font-size: 14px; font-weight: 600; color: #1e293b; }
 .page-body { flex: 1; overflow: auto; padding: 20px; }
 .content-card { border-radius: 12px; }
-.direction-help { display: flex; flex-direction: column; gap: 8px; font-size: 12px; color: #475569; }
+.direction-form-item :deep(.n-base-selection-label) {
+  padding-top: 4px;
+  padding-bottom: 4px;
+}
+
+.direction-form-item :deep(.n-base-selection) {
+  min-height: 38px;
+}
+
+.direction-form-item :deep(.n-base-selection-input) {
+  min-height: auto;
+}
+
+.direction-help-item {
+  margin-top: -4px;
+  margin-bottom: 12px;
+}
+
+.direction-help {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 10px 12px;
+  border-radius: 12px;
+  background: #f8fafc;
+  border: 1px solid #e2e8f0;
+  font-size: 12px;
+  color: #475569;
+}
 .direction-help-row { display: flex; gap: 8px; align-items: flex-start; }
 .direction-help-tag { min-width: 48px; display: inline-flex; justify-content: center; padding: 2px 8px; border-radius: 999px; background: #dbeafe; color: #1d4ed8; font-size: 11px; font-weight: 600; }
 .direction-help-tag--target { background: #ede9fe; color: #6d28d9; }

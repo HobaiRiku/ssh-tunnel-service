@@ -32,7 +32,7 @@ defineProps<{
   width: 100%;
   height: 100%;
   background: #eff6ff;
-  border: 2px solid #2563eb;
+  border: 2px solid rgba(37, 99, 235, 0.9);
   border-radius: 10px;
   overflow: visible;
 }

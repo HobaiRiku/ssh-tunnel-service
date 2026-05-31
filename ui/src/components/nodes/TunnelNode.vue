@@ -68,7 +68,7 @@ const stateStyle = computed(() => {
   border: 1.5px solid;
   border-radius: 10px;
   width: 272px;
-  overflow: hidden;
+  overflow: visible;
   box-shadow: 0 1px 4px rgba(0, 0, 0, 0.08);
   cursor: pointer;
   transition: box-shadow 0.15s ease, transform 0.15s ease, border-color 0.15s ease;
@@ -93,5 +93,13 @@ const stateStyle = computed(() => {
 .dir-badge.local { background: #dbeafe; color: #1d4ed8; }
 .dir-badge.remote { background: #fce7f3; color: #9d174d; }
 .addr, .target { font-family: 'SF Mono', 'Fira Code', monospace; font-size: 11px; color: #475569; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-:deep(.handle-right) { width: 10px !important; height: 10px !important; background: #2563eb !important; border: 2px solid white !important; }
+:deep(.handle-right) {
+  width: 12px !important;
+  height: 12px !important;
+  right: -6px;
+  background: #2563eb !important;
+  border: 2px solid white !important;
+  box-shadow: 0 0 0 1px rgba(37, 99, 235, 0.2);
+  z-index: 4;
+}
 </style>

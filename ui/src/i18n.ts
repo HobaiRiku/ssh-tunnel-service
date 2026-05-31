@@ -39,7 +39,7 @@ const messages = {
       noRemotesSub: 'Create a remote and then add tunnels to view the topology here.',
       noTunnelsTitle: 'No tunnels yet',
       noTunnelsSub: 'Add a tunnel to render the topology and manage it directly from this view.',
-      clickHint: 'Click a tunnel or target node to open actions.',
+      clickHint: 'Click a tunnel or target node to open the action panel directly.',
       selected: 'Selected tunnel',
       bind: 'Bind',
       target: 'Target',

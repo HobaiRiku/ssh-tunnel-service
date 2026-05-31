@@ -30,7 +30,7 @@ defineProps<{
 </template>
 
 <style scoped>
-.target-node { display: inline-flex; align-items: center; background: #faf5ff; border: 1.5px solid #7c3aed; border-radius: 10px; box-shadow: 0 1px 4px rgba(0,0,0,0.08); overflow: hidden; cursor: pointer; }
+.target-node { display: inline-flex; align-items: center; background: #faf5ff; border: 1.5px solid #7c3aed; border-radius: 10px; box-shadow: 0 1px 4px rgba(0,0,0,0.08); overflow: visible; cursor: pointer; }
 .target-node.selected { border-color: #2563eb; box-shadow: 0 8px 18px rgba(15, 23, 42, 0.14); }
 .target-inner { display: flex; align-items: center; gap: 7px; padding: 10px 14px; }
 .icon { width: 16px; height: 16px; color: #7c3aed; flex-shrink: 0; }
@@ -38,5 +38,13 @@ defineProps<{
 .host { font-size: 11px; color: #4c1d95; font-weight: 500; }
 .sep { font-size: 11px; color: #7c3aed; }
 .port { font-size: 12px; color: #5b21b6; font-weight: 700; }
-:deep(.handle-left) { width: 10px !important; height: 10px !important; background: #7c3aed !important; border: 2px solid white !important; }
+:deep(.handle-left) {
+  width: 12px !important;
+  height: 12px !important;
+  left: -6px;
+  background: #7c3aed !important;
+  border: 2px solid white !important;
+  box-shadow: 0 0 0 1px rgba(124, 58, 237, 0.2);
+  z-index: 4;
+}
 </style>

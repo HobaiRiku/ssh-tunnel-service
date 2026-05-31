@@ -1,10 +1,11 @@
 <script setup lang="ts">
 import { computed, markRaw, nextTick, onMounted, watch } from 'vue'
-import { VueFlow, useVueFlow } from '@vue-flow/core'
+import { MarkerType, VueFlow, useVueFlow } from '@vue-flow/core'
 import { Background } from '@vue-flow/background'
 import { Controls } from '@vue-flow/controls'
 import type { Edge, Node } from '@vue-flow/core'
 import type { Remote, TunnelStatus } from '@/api/client'
+import TunnelEdge from '@/components/edges/TunnelEdge.vue'
 import RemoteGroupNode from '@/components/nodes/RemoteGroupNode.vue'
 import TunnelNode from '@/components/nodes/TunnelNode.vue'
 import TargetNode from '@/components/nodes/TargetNode.vue'
@@ -33,6 +34,9 @@ const nodeTypes = {
   tunnel: markRaw(TunnelNode),
   target: markRaw(TargetNode),
 }
+const edgeTypes = {
+  tunnel: markRaw(TunnelEdge),
+}
 
 const tunnelMap = computed(() => new Map(props.tunnels.map((tunnel) => [tunnel.id, tunnel] as const)))
 
@@ -41,13 +45,13 @@ const TUNNEL_SLOT_H = 128
 const GROUP_PAD_TOP = 18
 const GROUP_PAD_BOT = 22
 const GROUP_W = 320
-const TUNNEL_INDENT = 18
+const TUNNEL_W = 272
+const TUNNEL_INDENT = (GROUP_W - TUNNEL_W) / 2
 const TARGET_X = 620
 const GROUP_GAP = 40
 
 const isEmpty = computed(() => !props.loading && props.remotes.length === 0)
 const hasTunnels = computed(() => props.tunnels.length > 0)
-const selectedTunnel = computed(() => props.tunnels.find((tunnel) => tunnel.id === props.selectedTunnelId) ?? null)
 
 const flowNodes = computed<Node[]>(() => {
   const nodes: Node[] = []
@@ -114,20 +118,40 @@ const flowNodes = computed<Node[]>(() => {
 })
 
 const flowEdges = computed<Edge[]>(() => {
-  return props.tunnels.map((tunnel) => ({
-    id: `edge-${tunnel.id}`,
-    source: `tunnel-${tunnel.id}`,
-    target: `target-${tunnel.id}`,
-    type: 'smoothstep',
-    animated: tunnel.state === 'running',
-    label: tunnel.direction === '-L' ? `→ :${tunnel.target_port}` : `← :${tunnel.bind_port}`,
-    labelStyle: { fontSize: '10px', fill: '#64748b' },
-    labelBgStyle: { fill: 'transparent' },
-    style: {
-      stroke: tunnel.id === props.selectedTunnelId ? '#2563eb' : tunnel.state === 'running' ? '#22c55e' : tunnel.state === 'error' ? '#ef4444' : '#94a3b8',
-      strokeWidth: tunnel.id === props.selectedTunnelId ? 2.4 : 1.8,
-    },
-  }))
+  return props.tunnels.map((tunnel) => {
+    const stroke = tunnel.id === props.selectedTunnelId
+      ? '#2563eb'
+      : tunnel.state === 'running'
+        ? '#22c55e'
+        : tunnel.state === 'error'
+          ? '#ef4444'
+          : '#94a3b8'
+
+    return {
+      id: `edge-${tunnel.id}`,
+      source: `tunnel-${tunnel.id}`,
+      target: `target-${tunnel.id}`,
+      type: 'tunnel',
+      animated: tunnel.state === 'running',
+      data: {
+        direction: tunnel.direction,
+        bindPort: tunnel.bind_port,
+        targetPort: tunnel.target_port,
+        selected: tunnel.id === props.selectedTunnelId,
+      },
+      markerStart: tunnel.direction === '-R'
+        ? { type: MarkerType.ArrowClosed, width: 12, height: 12, strokeWidth: 1.25, color: stroke }
+        : undefined,
+      markerEnd: tunnel.direction === '-L'
+        ? { type: MarkerType.ArrowClosed, width: 12, height: 12, strokeWidth: 1.25, color: stroke }
+        : undefined,
+      style: {
+        stroke,
+        strokeWidth: tunnel.id === props.selectedTunnelId ? 3.2 : 2.4,
+      },
+      zIndex: 3,
+    }
+  })
 })
 
 function handleNodeClick(event: { node: Node }) {
@@ -182,15 +206,12 @@ onMounted(() => {
     <template v-else>
       <div class="topology-toolbar">
         <span>{{ t('topology.clickHint') }}</span>
-        <div v-if="selectedTunnel" class="selected-pill">
-          <strong>{{ t('topology.selected') }}:</strong>
-          <span>{{ selectedTunnel.name || selectedTunnel.id }}</span>
-        </div>
       </div>
       <VueFlow
         :nodes="flowNodes"
         :edges="flowEdges"
         :node-types="nodeTypes"
+        :edge-types="edgeTypes"
         fit-view-on-init
         :min-zoom="0.3"
         :max-zoom="2"
@@ -220,22 +241,13 @@ onMounted(() => {
 .topology-toolbar {
   display: flex;
   align-items: center;
-  justify-content: space-between;
+  justify-content: flex-start;
   gap: 12px;
   padding: 10px 14px;
   background: #eff6ff;
   color: #1d4ed8;
   border-radius: 12px;
   font-size: 13px;
-}
-
-.selected-pill {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  padding: 6px 10px;
-  border-radius: 999px;
-  background: rgba(37, 99, 235, 0.12);
 }
 
 .flow {

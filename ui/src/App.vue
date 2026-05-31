@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { NButton, NButtonGroup, NConfigProvider, NMessageProvider, darkTheme, useOsTheme } from 'naive-ui'
+import { NConfigProvider, NMessageProvider, NSelect, darkTheme, useOsTheme } from 'naive-ui'
 import { RouterLink, useRoute } from 'vue-router'
 import { computed } from 'vue'
 import { useI18n, type Locale } from '@/i18n'
@@ -8,6 +8,11 @@ const osTheme = useOsTheme()
 const theme = computed(() => osTheme.value === 'dark' ? darkTheme : null)
 const route = useRoute()
 const { locale, setLocale, t } = useI18n()
+
+const localeOptions = computed(() => [
+  { label: t('app.english'), value: 'en' satisfies Locale },
+  { label: t('app.chinese'), value: 'zh-CN' satisfies Locale },
+])
 
 const tabs = computed(() => [
   { label: t('app.tunnels'), to: '/tunnels' },
@@ -48,10 +53,15 @@ function switchLocale(next: Locale) {
               :class="{ active: route.path === tab.to }"
             >{{ tab.label }}</RouterLink>
           </nav>
-          <n-button-group size="small" class="locale-switcher">
-            <n-button :type="locale === 'en' ? 'primary' : 'default'" @click="switchLocale('en')">{{ t('app.english') }}</n-button>
-            <n-button :type="locale === 'zh-CN' ? 'primary' : 'default'" @click="switchLocale('zh-CN')">{{ t('app.chinese') }}</n-button>
-          </n-button-group>
+          <n-select
+            class="locale-switcher"
+            size="small"
+            :value="locale"
+            :options="localeOptions"
+            :consistent-menu-width="false"
+            :clearable="false"
+            @update:value="switchLocale"
+          />
         </header>
         <main class="app-content">
           <RouterView />
@@ -123,7 +133,11 @@ body {
 
 .nav-tab:hover { color: #334155; }
 .nav-tab.active { color: #2563eb; border-bottom-color: #2563eb; }
-.locale-switcher { margin-left: auto; }
+.locale-switcher {
+  margin-left: auto;
+  width: 96px;
+  flex-shrink: 0;
+}
 
 .app-content {
   flex: 1;
