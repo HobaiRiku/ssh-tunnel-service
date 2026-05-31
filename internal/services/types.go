@@ -42,5 +42,5 @@ type SSHKeyInput struct {
 	Description string `json:"description,omitempty"`
 	FileName    string `json:"file_name,omitempty"`
 	PrivateKey  string `json:"private_key,omitempty"`
-	SourcePath  string `json:"source_path,omitempty"`
+	SourcePath  string `json:"-"`
 }

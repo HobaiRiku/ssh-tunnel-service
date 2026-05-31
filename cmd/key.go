@@ -56,6 +56,9 @@ func keyAddCmd() *cobra.Command {
 			if err != nil {
 				return err
 			}
+			if err := loadKeyMaterial(&input); err != nil {
+				return err
+			}
 			if err := reg.AddKey(input); err != nil {
 				return err
 			}
@@ -83,6 +86,9 @@ func keyUpdateCmd() *cobra.Command {
 		RunE: func(_ *cobra.Command, args []string) error {
 			reg, _, err := registryForCLI(rootFlags.Home)
 			if err != nil {
+				return err
+			}
+			if err := loadKeyMaterial(&input); err != nil {
 				return err
 			}
 			if err := reg.UpdateKey(args[0], input); err != nil {
@@ -117,4 +123,19 @@ func keyRmCmd() *cobra.Command {
 			return nil
 		},
 	}
+}
+
+func loadKeyMaterial(input *services.SSHKeyInput) error {
+	if input == nil || input.SourcePath == "" {
+		return nil
+	}
+	if input.PrivateKey != "" {
+		return fmt.Errorf("provide either --private-key or --source, not both")
+	}
+	content, err := os.ReadFile(input.SourcePath)
+	if err != nil {
+		return fmt.Errorf("read key source %s: %w", input.SourcePath, err)
+	}
+	input.PrivateKey = string(content)
+	return nil
 }

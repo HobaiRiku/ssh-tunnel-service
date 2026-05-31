@@ -8,6 +8,8 @@ import (
 	"strings"
 	"sync"
 
+	"golang.org/x/crypto/ssh"
+
 	"ssh-tunnel-service/internal/config"
 	"ssh-tunnel-service/internal/paths"
 )
@@ -406,25 +408,16 @@ func (r *Registry) prepareKey(cfg *config.Config, existing config.SSHKey, input 
 	if privateKey != "" && sourcePath != "" {
 		return config.SSHKey{}, "", "", fmt.Errorf("key %q: provide either private_key or source_path, not both", id)
 	}
-	if existing.ID == "" && privateKey == "" && sourcePath == "" {
-		return config.SSHKey{}, "", "", fmt.Errorf("key %q: private_key or source_path is required", id)
+	if existing.ID == "" && privateKey == "" {
+		return config.SSHKey{}, "", "", fmt.Errorf("key %q: private_key is required", id)
 	}
-	if privateKey == "" && sourcePath == "" {
+	if privateKey == "" {
 		return key, "", "", nil
 	}
 
-	var content []byte
-	var err error
-	if privateKey != "" {
-		content = []byte(privateKey)
-		if len(content) == 0 || !strings.HasPrefix(privateKey, "-----BEGIN") {
-			return config.SSHKey{}, "", "", fmt.Errorf("key %q: private_key does not look like a PEM/OPENSSH private key", id)
-		}
-	} else {
-		content, err = os.ReadFile(sourcePath)
-		if err != nil {
-			return config.SSHKey{}, "", "", fmt.Errorf("read key source %s: %w", sourcePath, err)
-		}
+	content := []byte(privateKey)
+	if _, err := ssh.ParseRawPrivateKey(content); err != nil {
+		return config.SSHKey{}, "", "", fmt.Errorf("key %q: private_key is not a valid SSH private key: %w", id, err)
 	}
 	fileName, err := pickKeyFileName(id, input.FileName, sourcePath, existing.File)
 	if err != nil {
@@ -471,7 +464,7 @@ func pickKeyFileName(id, requested, sourcePath, existing string) (string, error)
 	if candidate == "." || candidate == string(filepath.Separator) || candidate == "" {
 		return "", fmt.Errorf("key %q: invalid file name", id)
 	}
-	if strings.Contains(candidate, "..") {
+	if filepath.Clean(candidate) != candidate || candidate == ".." {
 		return "", fmt.Errorf("key %q: invalid file name", id)
 	}
 	return candidate, nil
