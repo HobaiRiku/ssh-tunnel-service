@@ -11,44 +11,69 @@ import (
 	"regexp"
 	"strings"
 	"sync"
+	"time"
 
 	"ssh-tunnel-service/internal/config"
 )
 
-// Manager launches and tracks ssh child processes for each tunnel.
+// Reconnect backoff bounds for supervised (auto_start) tunnels.
+const (
+	reconnectBaseDelay   = 2 * time.Second
+	reconnectMaxDelay    = 60 * time.Second
+	reconnectStableAfter = 20 * time.Second // uptime past which backoff resets
+)
+
+// Manager launches and tracks ssh child processes for each tunnel (keyed by
+// tunnel name). auto_start tunnels are supervised: if the ssh process exits
+// unexpectedly the manager reconnects with exponential backoff until the tunnel
+// is stopped or removed.
 type Manager struct {
-	mu     sync.Mutex
-	procs  map[string]*exec.Cmd
-	rt     *Runtime
-	reg    *Registry
-	logger *slog.Logger
+	mu       sync.Mutex
+	procs    map[string]*exec.Cmd
+	desired  map[string]bool        // name -> should be running (supervised)
+	attempts map[string]int         // name -> consecutive reconnect attempts
+	timers   map[string]*time.Timer // name -> pending reconnect timer
+	baseCtx  context.Context
+	rt       *Runtime
+	reg      *Registry
+	logger   *slog.Logger
 }
 
-// NewManager creates a tunnel process manager.
-func NewManager(reg *Registry, rt *Runtime, logger *slog.Logger) *Manager {
+// NewManager creates a tunnel process manager. baseCtx bounds the lifetime of
+// every spawned ssh process; when it is cancelled (service shutdown) the
+// children are killed and supervision stops.
+func NewManager(baseCtx context.Context, reg *Registry, rt *Runtime, logger *slog.Logger) *Manager {
+	if baseCtx == nil {
+		baseCtx = context.Background()
+	}
 	return &Manager{
-		procs:  map[string]*exec.Cmd{},
-		rt:     rt,
-		reg:    reg,
-		logger: logger,
+		procs:    map[string]*exec.Cmd{},
+		desired:  map[string]bool{},
+		attempts: map[string]int{},
+		timers:   map[string]*time.Timer{},
+		baseCtx:  baseCtx,
+		rt:       rt,
+		reg:      reg,
+		logger:   logger,
 	}
 }
 
-// Start launches the tunnel identified by id.
-func (m *Manager) Start(ctx context.Context, id string) error {
-	ts, remote, key, appCfg, err := m.lookupTunnel(id)
+// Start launches the tunnel identified by name and marks it as desired so that,
+// if it is an auto_start tunnel, the manager keeps it alive.
+func (m *Manager) Start(name string) error {
+	ts, remote, key, appCfg, err := m.lookupTunnel(name)
 	if err != nil {
 		return err
 	}
 	if appCfg.SSHHostKeyPolicy != config.SSHHostKeyPolicyInsecure {
 		if err := ensureKnownHostsFile(appCfg.SSHKnownHosts, 0o600); err != nil {
-			m.rt.SetError(id, err.Error())
+			m.rt.SetError(name, err.Error())
 			return err
 		}
 	}
 	if key != nil {
 		if err := ensurePrivateKeyFile(m.reg.KeyPath(key.File), 0o600); err != nil {
-			m.rt.SetError(id, err.Error())
+			m.rt.SetError(name, err.Error())
 			return err
 		}
 	}
@@ -56,52 +81,110 @@ func (m *Manager) Start(ctx context.Context, id string) error {
 	args := sshArgs(ts.Tunnel, remote, key, appCfg, m.reg)
 
 	m.mu.Lock()
-	if _, exists := m.procs[id]; exists {
+	if _, exists := m.procs[name]; exists {
 		m.mu.Unlock()
-		return fmt.Errorf("tunnel %q is already running", id)
+		return fmt.Errorf("tunnel %q is already running", name)
 	}
-	cmd := exec.CommandContext(ctx, "ssh", args...)
+	m.cancelTimerLocked(name)
+	cmd := exec.CommandContext(m.baseCtx, "ssh", args...)
 	var stderr bytes.Buffer
 	cmd.Stderr = &stderr
 	if err := cmd.Start(); err != nil {
 		m.mu.Unlock()
-		m.rt.SetError(id, err.Error())
-		return fmt.Errorf("start tunnel %s: %w", id, err)
+		m.rt.SetError(name, err.Error())
+		return fmt.Errorf("start tunnel %s: %w", name, err)
 	}
-	m.procs[id] = cmd
-	m.rt.SetRunning(id, cmd.Process.Pid)
+	m.procs[name] = cmd
+	m.desired[name] = true
+	m.rt.SetRunning(name, cmd.Process.Pid)
+	startedAt := time.Now()
 	m.mu.Unlock()
 
-	m.logger.Info("tunnel started", "id", id, "pid", cmd.Process.Pid, "remote", remote.ID, "key", remote.KeyID, "args", args)
-	go func() {
-		waitErr := cmd.Wait()
-		stderrText := strings.TrimSpace(stderr.String())
-
-		m.mu.Lock()
-		current, ok := m.procs[id]
-		if !ok || current != cmd {
-			m.mu.Unlock()
-			return
-		}
-		delete(m.procs, id)
-		m.mu.Unlock()
-
-		if waitErr != nil {
-			if ctx.Err() == nil {
-				diagnostic := diagnoseSSHFailure(stderrText)
-				m.logger.Warn("tunnel exited", "id", id, "err", waitErr, "stderr", stderrText, "diagnostic", diagnostic)
-				m.rt.SetError(id, diagnostic)
-				return
-			}
-		}
-		m.rt.SetStopped(id)
-	}()
+	m.logger.Info("tunnel started", "name", name, "pid", cmd.Process.Pid, "remote", remote.Name, "key", remote.Key, "args", args)
+	go m.waitProcess(name, cmd, &stderr, startedAt)
 	return nil
 }
 
-// Command returns the concrete ssh command the service would launch for id.
-func (m *Manager) Command(id string) (TunnelCommandPreview, error) {
-	ts, remote, key, appCfg, err := m.lookupTunnel(id)
+func (m *Manager) waitProcess(name string, cmd *exec.Cmd, stderr *bytes.Buffer, startedAt time.Time) {
+	waitErr := cmd.Wait()
+	stderrText := strings.TrimSpace(stderr.String())
+
+	m.mu.Lock()
+	current, ok := m.procs[name]
+	if !ok || current != cmd {
+		m.mu.Unlock()
+		return
+	}
+	delete(m.procs, name)
+	shuttingDown := m.baseCtx.Err() != nil
+	intentional := !m.desired[name]
+	if time.Since(startedAt) >= reconnectStableAfter {
+		m.attempts[name] = 0
+	}
+	reconnect := !intentional && !shuttingDown
+	m.mu.Unlock()
+
+	if intentional || shuttingDown {
+		m.rt.SetStopped(name)
+		return
+	}
+
+	if waitErr != nil {
+		diagnostic := diagnoseSSHFailure(stderrText)
+		m.logger.Warn("tunnel exited", "name", name, "err", waitErr, "stderr", stderrText, "diagnostic", diagnostic)
+		m.rt.SetError(name, diagnostic)
+	} else {
+		m.rt.SetStopped(name)
+	}
+
+	if reconnect {
+		m.scheduleReconnect(name)
+	}
+}
+
+// scheduleReconnect arms a backoff timer to bring an auto_start tunnel back up.
+func (m *Manager) scheduleReconnect(name string) {
+	ts, err := m.reg.GetTunnel(name)
+	if err != nil || !ts.AutoStart {
+		return
+	}
+	m.mu.Lock()
+	if !m.desired[name] || m.baseCtx.Err() != nil {
+		m.mu.Unlock()
+		return
+	}
+	m.attempts[name]++
+	delay := reconnectBaseDelay << (m.attempts[name] - 1)
+	if delay > reconnectMaxDelay || delay <= 0 {
+		delay = reconnectMaxDelay
+	}
+	m.cancelTimerLocked(name)
+	m.timers[name] = time.AfterFunc(delay, func() { m.reconnect(name) })
+	m.mu.Unlock()
+	m.logger.Info("tunnel reconnect scheduled", "name", name, "delay", delay.String())
+}
+
+func (m *Manager) reconnect(name string) {
+	m.mu.Lock()
+	delete(m.timers, name)
+	stop := !m.desired[name] || m.baseCtx.Err() != nil
+	_, running := m.procs[name]
+	m.mu.Unlock()
+	if stop || running {
+		return
+	}
+	if ts, err := m.reg.GetTunnel(name); err != nil || !ts.AutoStart {
+		return
+	}
+	if err := m.Start(name); err != nil {
+		m.logger.Warn("tunnel reconnect failed", "name", name, "err", err)
+		m.scheduleReconnect(name)
+	}
+}
+
+// Command returns the concrete ssh command the service would launch for name.
+func (m *Manager) Command(name string) (TunnelCommandPreview, error) {
+	ts, remote, key, appCfg, err := m.lookupTunnel(name)
 	if err != nil {
 		return TunnelCommandPreview{}, err
 	}
@@ -112,70 +195,89 @@ func (m *Manager) Command(id string) (TunnelCommandPreview, error) {
 	}, nil
 }
 
-// Stop kills the running tunnel process.
-func (m *Manager) Stop(id string) error {
+// Stop kills the running tunnel process and cancels supervision/reconnects.
+func (m *Manager) Stop(name string) error {
 	m.mu.Lock()
-	defer m.mu.Unlock()
-	cmd, ok := m.procs[id]
-	if !ok {
-		return fmt.Errorf("tunnel %q is not running", id)
-	}
-	if cmd.Process != nil {
+	m.desired[name] = false
+	hadTimer := m.timers[name] != nil
+	m.cancelTimerLocked(name)
+	cmd, running := m.procs[name]
+	m.mu.Unlock()
+
+	if running && cmd.Process != nil {
 		if err := cmd.Process.Kill(); err != nil {
-			return fmt.Errorf("kill tunnel %s: %w", id, err)
+			return fmt.Errorf("kill tunnel %s: %w", name, err)
 		}
-		delete(m.procs, id)
 	}
-	m.rt.SetStopped(id)
-	m.logger.Info("tunnel stopped", "id", id)
+	if !running && !hadTimer {
+		return fmt.Errorf("tunnel %q is not running", name)
+	}
+	m.rt.SetStopped(name)
+	m.logger.Info("tunnel stopped", "name", name)
 	return nil
 }
 
+// Forget drops all supervision state for a removed tunnel.
+func (m *Manager) Forget(name string) {
+	m.mu.Lock()
+	m.cancelTimerLocked(name)
+	delete(m.desired, name)
+	delete(m.attempts, name)
+	m.mu.Unlock()
+}
+
+func (m *Manager) cancelTimerLocked(name string) {
+	if t := m.timers[name]; t != nil {
+		t.Stop()
+		delete(m.timers, name)
+	}
+}
+
 // Restart restarts a running tunnel to apply configuration changes.
-func (m *Manager) Restart(ctx context.Context, id, reason string) error {
-	m.logger.Info("restarting tunnel", "id", id, "reason", reason)
-	if err := m.Stop(id); err != nil {
+func (m *Manager) Restart(name, reason string) error {
+	m.logger.Info("restarting tunnel", "name", name, "reason", reason)
+	if err := m.Stop(name); err != nil {
 		return err
 	}
-	if err := m.Start(ctx, id); err != nil {
-		m.logger.Error("tunnel restart failed", "id", id, "reason", reason, "err", err)
+	if err := m.Start(name); err != nil {
+		m.logger.Error("tunnel restart failed", "name", name, "reason", reason, "err", err)
 		return err
 	}
-	m.logger.Info("tunnel restarted", "id", id, "reason", reason)
+	m.logger.Info("tunnel restarted", "name", name, "reason", reason)
 	return nil
 }
 
 // IsRunning reports whether the tunnel currently has a managed process.
-func (m *Manager) IsRunning(id string) bool {
+func (m *Manager) IsRunning(name string) bool {
 	m.mu.Lock()
 	defer m.mu.Unlock()
-	_, ok := m.procs[id]
+	_, ok := m.procs[name]
 	return ok
 }
 
 // AutoStart launches all tunnels with auto_start: true.
-func (m *Manager) AutoStart(ctx context.Context) {
+func (m *Manager) AutoStart() {
 	for _, ts := range m.reg.ListTunnels() {
 		if ts.AutoStart {
-			if err := m.Start(ctx, ts.ID); err != nil {
-				m.logger.Error("autostart tunnel", "id", ts.ID, "err", err)
+			if err := m.Start(ts.Name); err != nil {
+				m.logger.Error("autostart tunnel", "name", ts.Name, "err", err)
 			}
 		}
 	}
 }
 
-func (m *Manager) lookupTunnel(id string) (TunnelStatus, config.Remote, *config.SSHKey, config.AppConfig, error) {
-	ts, err := m.reg.GetTunnel(id)
+func (m *Manager) lookupTunnel(name string) (TunnelStatus, config.Remote, *config.SSHKey, config.AppConfig, error) {
+	ts, err := m.reg.GetTunnel(name)
 	if err != nil {
 		return TunnelStatus{}, config.Remote{}, nil, config.AppConfig{}, err
 	}
-	remote, err := m.reg.GetRemote(ts.RemoteID)
+	remote, err := m.reg.GetRemote(ts.Remote)
 	if err != nil {
 		return TunnelStatus{}, config.Remote{}, nil, config.AppConfig{}, err
 	}
 	var key *config.SSHKey
-	if remote.KeyID != "" {
-		resolvedKey, err := m.reg.GetKey(remote.KeyID)
+	if remote.Key != "" {
+		resolvedKey, err := m.reg.GetKey(remote.Key)
 		if err != nil {
 			return TunnelStatus{}, config.Remote{}, nil, config.AppConfig{}, err
 		}

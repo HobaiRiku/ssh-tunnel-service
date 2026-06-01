@@ -35,9 +35,9 @@ func keyListCmd() *cobra.Command {
 				return json.NewEncoder(os.Stdout).Encode(keys)
 			}
 			tw := tabwriter.NewWriter(os.Stdout, 0, 4, 2, ' ', 0)
-			fmt.Fprintln(tw, "ID\tNAME\tFILE\tDESCRIPTION")
+			fmt.Fprintln(tw, "NAME\tFILE\tDESCRIPTION")
 			for _, key := range keys {
-				fmt.Fprintf(tw, "%s\t%s\t%s\t%s\n", key.ID, key.Name, key.File, key.Description)
+				fmt.Fprintf(tw, "%s\t%s\t%s\n", key.Name, key.File, key.Description)
 			}
 			return tw.Flush()
 		},
@@ -62,17 +62,15 @@ func keyAddCmd() *cobra.Command {
 			if err := reg.AddKey(input); err != nil {
 				return err
 			}
-			fmt.Printf("Key %q added.\n", input.ID)
+			fmt.Printf("Key %q added.\n", input.Name)
 			return nil
 		},
 	}
-	cmd.Flags().StringVar(&input.ID, "id", "", "unique ID (required)")
-	cmd.Flags().StringVar(&input.Name, "name", "", "display name (required)")
+	cmd.Flags().StringVar(&input.Name, "name", "", "unique name (required)")
 	cmd.Flags().StringVar(&input.Description, "description", "", "description")
 	cmd.Flags().StringVar(&input.FileName, "file-name", "", "stored file name override")
 	cmd.Flags().StringVar(&input.PrivateKey, "private-key", "", "private key content")
 	cmd.Flags().StringVar(&input.SourcePath, "source", "", "copy key material from an existing file")
-	_ = cmd.MarkFlagRequired("id")
 	_ = cmd.MarkFlagRequired("name")
 	return cmd
 }
@@ -80,8 +78,8 @@ func keyAddCmd() *cobra.Command {
 func keyUpdateCmd() *cobra.Command {
 	var input services.SSHKeyInput
 	cmd := &cobra.Command{
-		Use:   "update <id>",
-		Short: "Update a managed SSH key",
+		Use:   "update <name>",
+		Short: "Update a managed SSH key (use --name to rename)",
 		Args:  cobra.ExactArgs(1),
 		RunE: func(_ *cobra.Command, args []string) error {
 			reg, _, err := registryForCLI(rootFlags.Home)
@@ -98,7 +96,7 @@ func keyUpdateCmd() *cobra.Command {
 			return nil
 		},
 	}
-	cmd.Flags().StringVar(&input.Name, "name", "", "display name")
+	cmd.Flags().StringVar(&input.Name, "name", "", "rename the key")
 	cmd.Flags().StringVar(&input.Description, "description", "", "description")
 	cmd.Flags().StringVar(&input.FileName, "file-name", "", "stored file name override")
 	cmd.Flags().StringVar(&input.PrivateKey, "private-key", "", "private key content")
@@ -108,7 +106,7 @@ func keyUpdateCmd() *cobra.Command {
 
 func keyRmCmd() *cobra.Command {
 	return &cobra.Command{
-		Use:   "rm <id>",
+		Use:   "rm <name>",
 		Short: "Remove a managed SSH key",
 		Args:  cobra.ExactArgs(1),
 		RunE: func(_ *cobra.Command, args []string) error {

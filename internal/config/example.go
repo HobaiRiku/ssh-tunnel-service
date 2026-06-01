@@ -18,25 +18,25 @@ app:
   ssh_host_key_policy: accept-new  # accept-new | strict | insecure
   # ssh_known_hosts_file defaults to <SSH_TUNNEL_HOME>/known_hosts when empty
 
+# Each key, remote and tunnel is identified by its unique "name". Remotes
+# reference a key by name; tunnels reference their remote by name.
+
 # ─── Managed SSH keys (stored under <SSH_TUNNEL_HOME>/keys/) ────────────────
 keys:
-  - id: deploy-key
-    name: "Primary deploy key"
+  - name: "deploy-key"
     file: "deploy-key"
     description: "Upload or paste the private key into the runtime key store"
 
 # ─── Remote SSH servers (reusable targets) ─────────────────────────────────
 remotes:
-  - id: bastion
-    name: "Production Bastion"
+  - name: "Production Bastion"
     host: bastion.prod.example.com
     port: 22
     user: deploy
-    key_id: deploy-key
+    key: "deploy-key"
     description: "Public jump host fronting the production VPC"
 
-  - id: analytics-box
-    name: "Analytics Host"
+  - name: "Analytics Host"
     host: 10.0.12.34
     port: 2222
     user: analyst
@@ -44,9 +44,8 @@ remotes:
 
 # ─── Tunnels (ssh -L / -R definitions) ─────────────────────────────────────
 tunnels:
-  - id: postgres-forward
-    name: "Postgres via Bastion"
-    remote_id: bastion
+  - name: "Postgres via Bastion"
+    remote: "Production Bastion"
     direction: "-L"               # -L (local) or -R (remote)
     bind_address: "127.0.0.1"
     bind_port: 15432
@@ -61,9 +60,8 @@ tunnels:
     auto_start: true
     description: "Reach the private Postgres at db.internal:5432 on localhost:15432"
 
-  - id: grafana-forward
-    name: "Grafana via Bastion"
-    remote_id: bastion
+  - name: "Grafana via Bastion"
+    remote: "Production Bastion"
     direction: "-L"
     bind_address: "127.0.0.1"
     bind_port: 3000
@@ -72,9 +70,8 @@ tunnels:
     auto_start: false
     description: "Reach the internal Grafana UI on localhost:3000"
 
-  - id: webhook-receiver
-    name: "Expose Local Webhook Receiver"
-    remote_id: analytics-box
+  - name: "Expose Local Webhook Receiver"
+    remote: "Analytics Host"
     direction: "-R"
     bind_address: "127.0.0.1"
     bind_port: 9000

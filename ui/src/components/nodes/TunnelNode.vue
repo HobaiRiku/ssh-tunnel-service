@@ -43,9 +43,6 @@ const stateStyle = computed(() => {
     @keydown.space.stop="data.onSelect?.()"
   >
     <div class="tunnel-top">
-      <svg class="icon" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round">
-        <path d="M3 10h14M11 5l6 5-6 5"/>
-      </svg>
       <span class="name">{{ data.label }}</span>
       <span class="state-pill" :style="{ background: stateStyle.bg, color: stateStyle.dot, borderColor: stateStyle.border }">
         <span class="state-dot" :style="{ background: stateStyle.dot }"></span>

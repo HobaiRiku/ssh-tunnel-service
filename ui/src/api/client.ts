@@ -1,14 +1,13 @@
-// API client for ssh-tunnel-service REST API
+// API client for ssh-tunnel-service REST API.
+// Every resource is identified by its unique `name`; there is no `id`.
 
 export interface SSHKey {
-  id: string
   name: string
   file: string
   description: string
 }
 
 export interface SSHKeyPayload {
-  id?: string
   name: string
   file_name?: string
   private_key?: string
@@ -17,19 +16,17 @@ export interface SSHKeyPayload {
 }
 
 export interface Remote {
-  id: string
   name: string
   host: string
   port: number
   user: string
-  key_id: string
+  key: string
   description: string
 }
 
 export interface Tunnel {
-  id: string
   name: string
-  remote_id: string
+  remote: string
   direction: '-L' | '-R'
   bind_address: string
   bind_port: number
@@ -81,6 +78,9 @@ export async function initAuth(): Promise<void> {
 
 const BASE = '/api'
 
+// Names are used as path segments, so they must be URL-encoded.
+const seg = (name: string) => encodeURIComponent(name)
+
 async function req<T>(method: string, path: string, body?: unknown): Promise<T> {
   const headers = new Headers()
   if (body !== undefined) headers.set('Content-Type', 'application/json')
@@ -93,30 +93,42 @@ async function req<T>(method: string, path: string, body?: unknown): Promise<T> 
   })
   if (!res.ok) {
     const text = await res.text().catch(() => res.statusText)
-    throw new Error(`${method} ${path}: ${res.status} ${text}`)
+    throw new Error(extractError(text) || `${method} ${path}: ${res.status}`)
   }
   if (res.status === 204) return undefined as T
   return (await res.json()) as T
 }
 
+// The API returns errors as {"error": "..."}; surface that message directly so
+// the UI shows a clean reason instead of a raw HTTP envelope.
+function extractError(text: string): string {
+  try {
+    const parsed = JSON.parse(text) as { error?: string }
+    if (parsed && typeof parsed.error === 'string') return parsed.error
+  } catch {
+    /* not JSON */
+  }
+  return text
+}
+
 export const api = {
   listKeys: () => req<SSHKey[]>('GET', '/keys'),
   addKey: (key: SSHKeyPayload) => req<SSHKey>('POST', '/keys', key),
-  updateKey: (id: string, key: SSHKeyPayload) => req<SSHKey>('PUT', `/keys/${id}`, key),
-  deleteKey: (id: string) => req<void>('DELETE', `/keys/${id}`),
+  updateKey: (name: string, key: SSHKeyPayload) => req<SSHKey>('PUT', `/keys/${seg(name)}`, key),
+  deleteKey: (name: string) => req<void>('DELETE', `/keys/${seg(name)}`),
 
   listRemotes: () => req<Remote[]>('GET', '/remotes'),
-  addRemote: (remote: Omit<Remote, 'id'> & { id: string }) => req<Remote>('POST', '/remotes', remote),
-  updateRemote: (id: string, remote: Remote) => req<Remote>('PUT', `/remotes/${id}`, remote),
-  deleteRemote: (id: string) => req<void>('DELETE', `/remotes/${id}`),
+  addRemote: (remote: Remote) => req<Remote>('POST', '/remotes', remote),
+  updateRemote: (name: string, remote: Remote) => req<Remote>('PUT', `/remotes/${seg(name)}`, remote),
+  deleteRemote: (name: string) => req<void>('DELETE', `/remotes/${seg(name)}`),
 
   listTunnels: () => req<TunnelStatus[]>('GET', '/tunnels'),
   addTunnel: (tunnel: Tunnel) => req<Tunnel>('POST', '/tunnels', tunnel),
-  updateTunnel: (id: string, tunnel: Tunnel) => req<Tunnel>('PUT', `/tunnels/${id}`, tunnel),
-  deleteTunnel: (id: string) => req<void>('DELETE', `/tunnels/${id}`),
-  getTunnelCommand: (id: string) => req<TunnelCommandPreview>('GET', `/tunnels/${id}/command`),
-  startTunnel: (id: string) => req<void>('POST', `/tunnels/${id}/start`),
-  stopTunnel: (id: string) => req<void>('POST', `/tunnels/${id}/stop`),
+  updateTunnel: (name: string, tunnel: Tunnel) => req<Tunnel>('PUT', `/tunnels/${seg(name)}`, tunnel),
+  deleteTunnel: (name: string) => req<void>('DELETE', `/tunnels/${seg(name)}`),
+  getTunnelCommand: (name: string) => req<TunnelCommandPreview>('GET', `/tunnels/${seg(name)}/command`),
+  startTunnel: (name: string) => req<void>('POST', `/tunnels/${seg(name)}/start`),
+  stopTunnel: (name: string) => req<void>('POST', `/tunnels/${seg(name)}/stop`),
 
   health: () => req<{ ok: boolean }>('GET', '/health'),
 }

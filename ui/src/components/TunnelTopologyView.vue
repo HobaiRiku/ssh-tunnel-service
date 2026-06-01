@@ -1,15 +1,17 @@
 <script setup lang="ts">
-import { computed, markRaw, nextTick, ref, watch } from 'vue'
+import { computed, markRaw, nextTick, onBeforeUnmount, reactive, ref, watch } from 'vue'
 import { MarkerType, PanOnScrollMode, VueFlow, useVueFlow } from '@vue-flow/core'
 import { Background } from '@vue-flow/background'
 import { Controls } from '@vue-flow/controls'
+import { useMessage } from 'naive-ui'
 import type { Edge, Node } from '@vue-flow/core'
-import type { Remote, TunnelStatus } from '@/api/client'
+import { api, getErrorMessage, type Remote, type TunnelStatus } from '@/api/client'
 import TunnelEdge from '@/components/edges/TunnelEdge.vue'
 import RemoteGroupNode from '@/components/nodes/RemoteGroupNode.vue'
 import TunnelNode from '@/components/nodes/TunnelNode.vue'
 import TargetNode from '@/components/nodes/TargetNode.vue'
 import { topologyViewState } from '@/components/topologyViewState'
+import { copyText } from '@/clipboard'
 import { useI18n } from '@/i18n'
 
 import '@vue-flow/core/dist/style.css'
@@ -20,7 +22,7 @@ const props = defineProps<{
   tunnels: TunnelStatus[]
   remotes: Remote[]
   loading: boolean
-  selectedTunnelId?: string | null
+  selectedTunnelName?: string | null
 }>()
 
 const emit = defineEmits<{
@@ -29,6 +31,7 @@ const emit = defineEmits<{
 
 const { viewport, setViewport, dimensions, onInit, onMove } = useVueFlow()
 const { t } = useI18n()
+const message = useMessage()
 
 // View state persisted across remounts (table <-> topology toggle, route changes)
 // so returning to the topology keeps the user's zoom / scroll / remote tab.
@@ -43,7 +46,7 @@ const edgeTypes = {
   tunnel: markRaw(TunnelEdge),
 }
 
-const tunnelMap = computed(() => new Map(props.tunnels.map((tunnel) => [tunnel.id, tunnel] as const)))
+const tunnelMap = computed(() => new Map(props.tunnels.map((tunnel) => [tunnel.name, tunnel] as const)))
 
 const GROUP_HEADER_H = 60
 const TUNNEL_SLOT_H = 128
@@ -89,12 +92,12 @@ const activeRemoteId = ref<string | null>(
 
 const filteredRemotes = computed(() => {
   if (!activeRemoteId.value) return props.remotes
-  const found = props.remotes.filter((remote) => remote.id === activeRemoteId.value)
+  const found = props.remotes.filter((remote) => remote.name === activeRemoteId.value)
   return found.length > 0 ? found : props.remotes
 })
 
-const visibleRemoteIds = computed(() => new Set(filteredRemotes.value.map((remote) => remote.id)))
-const visibleTunnels = computed(() => props.tunnels.filter((tunnel) => visibleRemoteIds.value.has(tunnel.remote_id)))
+const visibleRemoteNames = computed(() => new Set(filteredRemotes.value.map((remote) => remote.name)))
+const visibleTunnels = computed(() => props.tunnels.filter((tunnel) => visibleRemoteNames.value.has(tunnel.remote)))
 
 function selectRemote(id: string | null) {
   if (activeRemoteId.value === id) return
@@ -108,7 +111,7 @@ function selectRemote(id: string | null) {
 watch(
   () => props.remotes,
   (remotes) => {
-    if (activeRemoteId.value && !remotes.some((remote) => remote.id === activeRemoteId.value)) {
+    if (activeRemoteId.value && !remotes.some((remote) => remote.name === activeRemoteId.value)) {
       activeRemoteId.value = null
       persisted.remoteId = null
     }
@@ -121,12 +124,12 @@ const layout = computed<{ nodes: Node[]; height: number }>(() => {
   let yOffset = 0
 
   for (const remote of filteredRemotes.value) {
-    const remoteTunnels = props.tunnels.filter((tunnel) => tunnel.remote_id === remote.id)
+    const remoteTunnels = props.tunnels.filter((tunnel) => tunnel.remote === remote.name)
     const slotCount = Math.max(remoteTunnels.length, 1)
     const groupH = GROUP_HEADER_H + GROUP_PAD_TOP + slotCount * TUNNEL_SLOT_H + GROUP_PAD_BOT
 
     nodes.push({
-      id: `group-${remote.id}`,
+      id: `group-${remote.name}`,
       type: 'remoteGroup',
       position: { x: 0, y: yOffset },
       data: { label: remote.name, host: remote.host, port: remote.port, user: remote.user },
@@ -144,20 +147,20 @@ const layout = computed<{ nodes: Node[]; height: number }>(() => {
       const localEndpoint = getLocalEndpoint(tunnel)
 
       nodes.push({
-        id: `tunnel-${tunnel.id}`,
+        id: `tunnel-${tunnel.name}`,
         type: 'tunnel',
-        parentNode: `group-${remote.id}`,
+        parentNode: `group-${remote.name}`,
         extent: 'parent',
         position: { x: TUNNEL_INDENT, y: childY },
         data: {
-          label: tunnel.name || tunnel.id,
+          label: tunnel.name,
           direction: tunnel.direction,
           remoteHost: remoteEndpoint.host,
           remotePort: remoteEndpoint.port,
           localHost: localEndpoint.host,
           localPort: localEndpoint.port,
           state: tunnel.state,
-          selected: tunnel.id === props.selectedTunnelId,
+          selected: tunnel.name === props.selectedTunnelName,
           onSelect,
         },
         draggable: false,
@@ -166,13 +169,13 @@ const layout = computed<{ nodes: Node[]; height: number }>(() => {
       })
 
       nodes.push({
-        id: `target-${tunnel.id}`,
+        id: `target-${tunnel.name}`,
         type: 'target',
         position: { x: TARGET_X, y: absY + 38 },
         data: {
           host: localEndpoint.host,
           port: localEndpoint.port,
-          selected: tunnel.id === props.selectedTunnelId,
+          selected: tunnel.name === props.selectedTunnelName,
           onSelect,
         },
         draggable: false,
@@ -196,7 +199,8 @@ const flowEdges = computed<Edge[]>(() => {
   return visibleTunnels.value.map((tunnel) => {
     const remoteEndpoint = getRemoteEndpoint(tunnel)
     const localEndpoint = getLocalEndpoint(tunnel)
-    const stroke = tunnel.id === props.selectedTunnelId
+    const selected = tunnel.name === props.selectedTunnelName
+    const stroke = selected
       ? '#2563eb'
       : tunnel.state === 'running'
         ? '#22c55e'
@@ -204,31 +208,109 @@ const flowEdges = computed<Edge[]>(() => {
           ? '#ef4444'
           : '#94a3b8'
 
+    // A -R (remote forward) flows from the remote side back to the local
+    // target, so the arrow points the opposite way: anchor it at the source
+    // end (markerStart) instead of the target end (markerEnd).
+    const reversed = tunnel.direction === '-R'
+    const marker = { type: MarkerType.ArrowClosed, width: 22, height: 22, strokeWidth: 1, color: stroke, markerUnits: 'userSpaceOnUse' as const }
+
     return {
-      id: `edge-${tunnel.id}`,
-      source: `tunnel-${tunnel.id}`,
-      target: `target-${tunnel.id}`,
+      id: `edge-${tunnel.name}`,
+      source: `tunnel-${tunnel.name}`,
+      target: `target-${tunnel.name}`,
       type: 'tunnel',
       animated: tunnel.state === 'running',
       data: {
         remotePort: remoteEndpoint.port,
         localPort: localEndpoint.port,
-        selected: tunnel.id === props.selectedTunnelId,
+        selected,
+        reversed,
       },
-      markerEnd: { type: MarkerType.ArrowClosed, width: 22, height: 22, strokeWidth: 1, color: stroke, markerUnits: 'userSpaceOnUse' },
+      markerStart: reversed ? marker : undefined,
+      markerEnd: reversed ? undefined : marker,
       style: {
         stroke,
-        strokeWidth: tunnel.id === props.selectedTunnelId ? 3.2 : 2.4,
+        strokeWidth: selected ? 3.2 : 2.4,
       },
       zIndex: 3,
     }
   })
 })
 
+function tunnelFromNodeId(nodeId: string): TunnelStatus | undefined {
+  if (nodeId.startsWith('tunnel-')) return tunnelMap.value.get(nodeId.slice('tunnel-'.length))
+  if (nodeId.startsWith('target-')) return tunnelMap.value.get(nodeId.slice('target-'.length))
+  return undefined
+}
+
 function handleNodeClick(event: { node: Node }) {
-  const id = event.node.id.replace(/^tunnel-|^target-/, '')
-  const tunnel = tunnelMap.value.get(id)
+  const tunnel = tunnelFromNodeId(event.node.id)
   if (tunnel) emit('select', tunnel)
+}
+
+// ---- Right-click context menu (copy helpers) ---------------------------------
+const menu = reactive<{ visible: boolean; x: number; y: number; tunnel: TunnelStatus | null }>({
+  visible: false,
+  x: 0,
+  y: 0,
+  tunnel: null,
+})
+
+function onNodeContextMenu({ event, node }: { event: MouseEvent; node: Node }) {
+  const tunnel = tunnelFromNodeId(node.id)
+  if (!tunnel) return
+  event.preventDefault()
+  menu.visible = true
+  menu.x = event.clientX
+  menu.y = event.clientY
+  menu.tunnel = tunnel
+}
+
+function closeMenu() {
+  menu.visible = false
+  menu.tunnel = null
+}
+
+async function copyValue(value: string) {
+  const ok = await copyText(value)
+  if (ok) message.success(t('common.copied'))
+  else message.error(t('common.copyFailed'))
+  closeMenu()
+}
+
+function copyMenuName() {
+  if (menu.tunnel) void copyValue(menu.tunnel.name)
+}
+
+function copyMenuBind() {
+  if (menu.tunnel) void copyValue(`${menu.tunnel.bind_address}:${menu.tunnel.bind_port}`)
+}
+
+function copyMenuTarget() {
+  if (menu.tunnel) void copyValue(`${menu.tunnel.target_host}:${menu.tunnel.target_port}`)
+}
+
+async function copyMenuCommand() {
+  if (!menu.tunnel) return
+  const name = menu.tunnel.name
+  closeMenu()
+  try {
+    const preview = await api.getTunnelCommand(name)
+    const ok = await copyText(preview.command)
+    if (ok) message.success(t('common.copied'))
+    else message.error(t('common.copyFailed'))
+  } catch (err: unknown) {
+    message.error(getErrorMessage(err))
+  }
+}
+
+if (typeof window !== 'undefined') {
+  window.addEventListener('click', closeMenu)
+  window.addEventListener('scroll', closeMenu, true)
+  onBeforeUnmount(() => {
+    window.removeEventListener('click', closeMenu)
+    window.removeEventListener('scroll', closeMenu, true)
+  })
 }
 
 // ---- Viewport control --------------------------------------------------------
@@ -339,12 +421,12 @@ watch(contentHeight, () => apply())
         <div class="remote-tab-scroll">
           <button
             v-for="remote in props.remotes"
-            :key="remote.id"
+            :key="remote.name"
             type="button"
             class="remote-tab"
-            :class="{ active: activeRemoteId === remote.id }"
+            :class="{ active: activeRemoteId === remote.name }"
             :title="`${remote.host}:${remote.port}`"
-            @click="selectRemote(remote.id)"
+            @click="selectRemote(remote.name)"
           >
             {{ remote.name }}
           </button>
@@ -368,11 +450,26 @@ watch(contentHeight, () => apply())
         :prevent-scrolling="true"
         class="flow"
         @node-click="handleNodeClick"
+        @node-context-menu="onNodeContextMenu"
       >
         <Background pattern-color="#e2e8f0" :gap="20" />
         <Controls :show-fit-view="false" :show-interactive="false" position="bottom-right" />
       </VueFlow>
     </template>
+
+    <div
+      v-if="menu.visible"
+      class="ctx-menu"
+      :style="{ left: menu.x + 'px', top: menu.y + 'px' }"
+      @click.stop
+      @contextmenu.prevent
+    >
+      <div class="ctx-menu-title">{{ menu.tunnel?.name }}</div>
+      <button type="button" class="ctx-menu-item" @click="copyMenuName">{{ t('topology.copyName') }}</button>
+      <button type="button" class="ctx-menu-item" @click="copyMenuBind">{{ t('topology.copyBind') }}</button>
+      <button type="button" class="ctx-menu-item" @click="copyMenuTarget">{{ t('topology.copyTarget') }}</button>
+      <button type="button" class="ctx-menu-item" @click="copyMenuCommand">{{ t('topology.copyCommand') }}</button>
+    </div>
   </div>
 </template>
 
@@ -462,4 +559,40 @@ watch(contentHeight, () => apply())
 .empty-icon { width: 72px; height: 72px; }
 .empty-title { font-size: 15px; font-weight: 600; color: #64748b; }
 .empty-sub { max-width: 420px; text-align: center; font-size: 13px; color: #94a3b8; }
+
+.ctx-menu {
+  position: fixed;
+  z-index: 9999;
+  min-width: 168px;
+  padding: 4px;
+  background: #fff;
+  border: 1px solid #e2e8f0;
+  border-radius: 10px;
+  box-shadow: 0 10px 30px rgba(15, 23, 42, 0.18);
+}
+.ctx-menu-title {
+  padding: 6px 10px 8px;
+  font-size: 11px;
+  font-weight: 700;
+  color: #94a3b8;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 240px;
+  border-bottom: 1px solid #f1f5f9;
+  margin-bottom: 4px;
+}
+.ctx-menu-item {
+  display: block;
+  width: 100%;
+  text-align: left;
+  padding: 7px 10px;
+  border: none;
+  background: transparent;
+  border-radius: 6px;
+  font-size: 13px;
+  color: #1e293b;
+  cursor: pointer;
+}
+.ctx-menu-item:hover { background: #f1f5f9; }
 </style>

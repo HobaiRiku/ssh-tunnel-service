@@ -52,26 +52,26 @@ func NewRouter(opts Options) *gin.Engine {
 	keys := api.Group("/keys")
 	keys.GET("", listKeys(opts.Registry))
 	keys.POST("", addKey(opts.Registry))
-	keys.GET("/:id", getKey(opts.Registry))
-	keys.PUT("/:id", updateKey(opts.Registry))
-	keys.DELETE("/:id", deleteKey(opts.Registry))
+	keys.GET("/:name", getKey(opts.Registry))
+	keys.PUT("/:name", updateKey(opts.Registry))
+	keys.DELETE("/:name", deleteKey(opts.Registry))
 
 	remotes := api.Group("/remotes")
 	remotes.GET("", listRemotes(opts.Registry))
 	remotes.POST("", addRemote(opts.Registry))
-	remotes.GET("/:id", getRemote(opts.Registry))
-	remotes.PUT("/:id", updateRemote(opts.Registry))
-	remotes.DELETE("/:id", deleteRemote(opts.Registry))
+	remotes.GET("/:name", getRemote(opts.Registry))
+	remotes.PUT("/:name", updateRemote(opts.Registry))
+	remotes.DELETE("/:name", deleteRemote(opts.Registry))
 
 	tunnels := api.Group("/tunnels")
 	tunnels.GET("", listTunnels(opts.Registry))
 	tunnels.POST("", addTunnel(opts.Registry))
-	tunnels.GET("/:id", getTunnel(opts.Registry))
-	tunnels.GET("/:id/command", tunnelCommand(opts.Manager))
-	tunnels.PUT("/:id", updateTunnel(opts.Registry))
-	tunnels.DELETE("/:id", deleteTunnel(opts.Registry))
-	tunnels.POST("/:id/start", startTunnel(opts.Context, opts.Manager))
-	tunnels.POST("/:id/stop", stopTunnel(opts.Manager))
+	tunnels.GET("/:name", getTunnel(opts.Registry))
+	tunnels.GET("/:name/command", tunnelCommand(opts.Manager))
+	tunnels.PUT("/:name", updateTunnel(opts.Registry))
+	tunnels.DELETE("/:name", deleteTunnel(opts.Registry))
+	tunnels.POST("/:name/start", startTunnel(opts.Manager))
+	tunnels.POST("/:name/stop", stopTunnel(opts.Manager))
 
 	return r
 }
@@ -82,7 +82,7 @@ func listKeys(reg *services.Registry) gin.HandlerFunc {
 
 func getKey(reg *services.Registry) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		key, err := reg.GetKey(c.Param("id"))
+		key, err := reg.GetKey(c.Param("name"))
 		if err != nil {
 			c.JSON(http.StatusNotFound, apiError(err))
 			return
@@ -102,7 +102,7 @@ func addKey(reg *services.Registry) gin.HandlerFunc {
 			c.JSON(http.StatusBadRequest, apiError(err))
 			return
 		}
-		key, err := reg.GetKey(input.ID)
+		key, err := reg.GetKey(input.Name)
 		if err != nil {
 			c.JSON(http.StatusBadRequest, apiError(err))
 			return
@@ -118,7 +118,7 @@ func updateKey(reg *services.Registry) gin.HandlerFunc {
 			c.JSON(http.StatusBadRequest, apiError(err))
 			return
 		}
-		if err := reg.UpdateKey(c.Param("id"), input); err != nil {
+		if err := reg.UpdateKey(c.Param("name"), input); err != nil {
 			if errors.Is(err, services.ErrNotFound) {
 				c.JSON(http.StatusNotFound, apiError(err))
 				return
@@ -126,7 +126,7 @@ func updateKey(reg *services.Registry) gin.HandlerFunc {
 			c.JSON(http.StatusBadRequest, apiError(err))
 			return
 		}
-		key, err := reg.GetKey(c.Param("id"))
+		key, err := reg.GetKey(c.Param("name"))
 		if err != nil {
 			c.JSON(http.StatusBadRequest, apiError(err))
 			return
@@ -137,7 +137,7 @@ func updateKey(reg *services.Registry) gin.HandlerFunc {
 
 func deleteKey(reg *services.Registry) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		if err := reg.DeleteKey(c.Param("id")); err != nil {
+		if err := reg.DeleteKey(c.Param("name")); err != nil {
 			if errors.Is(err, services.ErrNotFound) {
 				c.JSON(http.StatusNotFound, apiError(err))
 				return
@@ -155,7 +155,7 @@ func listRemotes(reg *services.Registry) gin.HandlerFunc {
 
 func getRemote(reg *services.Registry) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		remote, err := reg.GetRemote(c.Param("id"))
+		remote, err := reg.GetRemote(c.Param("name"))
 		if err != nil {
 			c.JSON(http.StatusNotFound, apiError(err))
 			return
@@ -186,7 +186,7 @@ func updateRemote(reg *services.Registry) gin.HandlerFunc {
 			c.JSON(http.StatusBadRequest, apiError(err))
 			return
 		}
-		if err := reg.UpdateRemote(c.Param("id"), input); err != nil {
+		if err := reg.UpdateRemote(c.Param("name"), input); err != nil {
 			if errors.Is(err, services.ErrNotFound) {
 				c.JSON(http.StatusNotFound, apiError(err))
 				return
@@ -200,7 +200,7 @@ func updateRemote(reg *services.Registry) gin.HandlerFunc {
 
 func deleteRemote(reg *services.Registry) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		if err := reg.DeleteRemote(c.Param("id")); err != nil {
+		if err := reg.DeleteRemote(c.Param("name")); err != nil {
 			if errors.Is(err, services.ErrNotFound) {
 				c.JSON(http.StatusNotFound, apiError(err))
 				return
@@ -218,7 +218,7 @@ func listTunnels(reg *services.Registry) gin.HandlerFunc {
 
 func getTunnel(reg *services.Registry) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		ts, err := reg.GetTunnel(c.Param("id"))
+		ts, err := reg.GetTunnel(c.Param("name"))
 		if err != nil {
 			c.JSON(http.StatusNotFound, apiError(err))
 			return
@@ -229,7 +229,7 @@ func getTunnel(reg *services.Registry) gin.HandlerFunc {
 
 func tunnelCommand(mgr *services.Manager) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		preview, err := mgr.Command(c.Param("id"))
+		preview, err := mgr.Command(c.Param("name"))
 		if err != nil {
 			if errors.Is(err, services.ErrNotFound) {
 				c.JSON(http.StatusNotFound, apiError(err))
@@ -264,7 +264,7 @@ func updateTunnel(reg *services.Registry) gin.HandlerFunc {
 			c.JSON(http.StatusBadRequest, apiError(err))
 			return
 		}
-		if err := reg.UpdateTunnel(c.Param("id"), input); err != nil {
+		if err := reg.UpdateTunnel(c.Param("name"), input); err != nil {
 			if errors.Is(err, services.ErrNotFound) {
 				c.JSON(http.StatusNotFound, apiError(err))
 				return
@@ -278,7 +278,7 @@ func updateTunnel(reg *services.Registry) gin.HandlerFunc {
 
 func deleteTunnel(reg *services.Registry) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		if err := reg.DeleteTunnel(c.Param("id")); err != nil {
+		if err := reg.DeleteTunnel(c.Param("name")); err != nil {
 			if errors.Is(err, services.ErrNotFound) {
 				c.JSON(http.StatusNotFound, apiError(err))
 				return
@@ -290,9 +290,9 @@ func deleteTunnel(reg *services.Registry) gin.HandlerFunc {
 	}
 }
 
-func startTunnel(ctx context.Context, mgr *services.Manager) gin.HandlerFunc {
+func startTunnel(mgr *services.Manager) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		if err := mgr.Start(ctx, c.Param("id")); err != nil {
+		if err := mgr.Start(c.Param("name")); err != nil {
 			c.JSON(http.StatusBadRequest, apiError(err))
 			return
 		}
@@ -302,7 +302,7 @@ func startTunnel(ctx context.Context, mgr *services.Manager) gin.HandlerFunc {
 
 func stopTunnel(mgr *services.Manager) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		if err := mgr.Stop(c.Param("id")); err != nil {
+		if err := mgr.Stop(c.Param("name")); err != nil {
 			c.JSON(http.StatusBadRequest, apiError(err))
 			return
 		}

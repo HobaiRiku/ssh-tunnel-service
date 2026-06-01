@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, h, onMounted, ref } from 'vue'
+import { computed, h, onMounted, reactive, ref, watch } from 'vue'
 import {
   NAlert,
   NButton,
@@ -17,6 +17,8 @@ import {
 } from 'naive-ui'
 import type { DataTableColumns } from 'naive-ui'
 import { getErrorMessage, type Remote } from '@/api/client'
+import { copyText } from '@/clipboard'
+import { validateName } from '@/validation'
 import { useKeysStore } from '@/stores/keys'
 import { useRemotesStore } from '@/stores/remotes'
 import { useI18n } from '@/i18n'
@@ -27,31 +29,62 @@ const message = useMessage()
 const { t } = useI18n()
 
 const showModal = ref(false)
-const editingId = ref<string | null>(null)
-const form = ref<Remote>({ id: '', name: '', host: '', port: 22, user: '', key_id: '', description: '' })
+const editingName = ref<string | null>(null)
+const submitted = ref(false)
+const errors = reactive({ name: '', host: '' })
+
+function emptyRemote(): Remote {
+  return { name: '', host: '', port: 22, user: '', key: '', description: '' }
+}
+const form = ref<Remote>(emptyRemote())
 
 const keyOptions = computed(() => [
   { label: t('common.systemDefault'), value: '' },
-  ...keyStore.keys.map((key) => ({ label: key.name, value: key.id })),
+  ...keyStore.keys.map((key) => ({ label: key.name, value: key.name })),
 ])
-const keyNameMap = computed(() => new Map(keyStore.keys.map((key) => [key.id, key.name] as const)))
+
+function runValidation(): boolean {
+  errors.name = validateName(form.value.name, t) ?? ''
+  errors.host = form.value.host ? '' : t('remotes.fields.host')
+  return !errors.name && !errors.host
+}
+
+watch(form, () => {
+  if (submitted.value) runValidation()
+}, { deep: true })
+
+function feedback(field: keyof typeof errors): string {
+  return submitted.value ? errors[field] : ''
+}
+function status(field: keyof typeof errors): 'error' | undefined {
+  return submitted.value && errors[field] ? 'error' : undefined
+}
 
 function openAdd() {
-  editingId.value = null
-  form.value = { id: '', name: '', host: '', port: 22, user: '', key_id: '', description: '' }
+  editingName.value = null
+  form.value = emptyRemote()
+  submitted.value = false
+  errors.name = errors.host = ''
   showModal.value = true
 }
 
 function openEdit(row: Remote) {
-  editingId.value = row.id
+  editingName.value = row.name
   form.value = { ...row }
+  submitted.value = false
+  errors.name = errors.host = ''
   showModal.value = true
 }
 
 async function submitForm() {
+  submitted.value = true
+  if (!runValidation()) {
+    message.error(t('validation.fixErrors'))
+    return
+  }
   try {
-    if (editingId.value) {
-      await remoteStore.updateRemote(editingId.value, form.value)
+    if (editingName.value) {
+      await remoteStore.updateRemote(editingName.value, form.value)
       message.success(t('remotes.updated'))
     } else {
       await remoteStore.addRemote(form.value)
@@ -63,13 +96,19 @@ async function submitForm() {
   }
 }
 
-async function doDelete(id: string) {
+async function doDelete(name: string) {
   try {
-    await remoteStore.deleteRemote(id)
+    await remoteStore.deleteRemote(name)
     message.success(t('remotes.deleted'))
   } catch (error: unknown) {
     message.error(getErrorMessage(error))
   }
+}
+
+async function copyName(name: string) {
+  const ok = await copyText(name)
+  if (ok) message.success(t('common.copied'))
+  else message.error(t('common.copyFailed'))
 }
 
 const columns = computed<DataTableColumns<Remote>>(() => [
@@ -77,16 +116,17 @@ const columns = computed<DataTableColumns<Remote>>(() => [
   { title: t('remotes.columns.host'), key: 'host', render: (row) => h('span', { style: 'font-family:monospace;font-size:12px' }, row.host) },
   { title: t('remotes.columns.port'), key: 'port', width: 80 },
   { title: t('remotes.columns.user'), key: 'user', width: 110 },
-  { title: t('remotes.columns.key'), key: 'key_id', width: 140, render: (row) => keyNameMap.value.get(row.key_id) ?? t('common.systemDefault') },
+  { title: t('remotes.columns.key'), key: 'key', width: 140, render: (row) => row.key || t('common.systemDefault') },
   { title: t('remotes.columns.description'), key: 'description', ellipsis: { tooltip: true } },
   {
     title: t('remotes.columns.actions'),
     key: 'actions',
-    width: 150,
+    width: 200,
     render: (row) => h(NSpace, { size: 'small' }, {
       default: () => [
         h(NButton, { size: 'tiny', secondary: true, onClick: () => openEdit(row) }, { default: () => t('common.edit') }),
-        h(NPopconfirm, { onPositiveClick: () => doDelete(row.id) }, {
+        h(NButton, { size: 'tiny', tertiary: true, onClick: () => { void copyName(row.name) } }, { default: () => t('common.copyName') }),
+        h(NPopconfirm, { onPositiveClick: () => doDelete(row.name) }, {
           trigger: () => h(NButton, { size: 'tiny', type: 'error', ghost: true }, { default: () => t('common.delete') }),
           default: () => t('remotes.deleteConfirm'),
         }),
@@ -117,20 +157,17 @@ onMounted(async () => {
           :loading="remoteStore.loading || keyStore.loading"
           :bordered="false"
           size="small"
-          :row-key="(row: Remote) => row.id"
+          :row-key="(row: Remote) => row.name"
         />
       </n-card>
     </div>
 
-    <n-modal v-model:show="showModal" :title="editingId ? t('remotes.editTitle') : t('remotes.addTitle')" preset="dialog" style="width:540px">
+    <n-modal v-model:show="showModal" :title="editingName ? t('remotes.editTitle') : t('remotes.addTitle')" preset="dialog" style="width:540px">
       <n-form label-placement="left" label-width="110" style="margin-top:8px">
-        <n-form-item v-if="!editingId" :label="t('remotes.fields.id')">
-          <n-input v-model:value="form.id" placeholder="e.g. prod-server" />
+        <n-form-item :label="t('remotes.fields.name')" :validation-status="status('name')" :feedback="feedback('name')">
+          <n-input v-model:value="form.name" placeholder="e.g. prod-server" />
         </n-form-item>
-        <n-form-item :label="t('remotes.fields.name')">
-          <n-input v-model:value="form.name" :placeholder="t('remotes.fields.name')" />
-        </n-form-item>
-        <n-form-item :label="t('remotes.fields.host')">
+        <n-form-item :label="t('remotes.fields.host')" :validation-status="status('host')" :feedback="feedback('host')">
           <n-input v-model:value="form.host" placeholder="192.168.1.1" />
         </n-form-item>
         <n-form-item :label="t('remotes.fields.port')">
@@ -140,7 +177,7 @@ onMounted(async () => {
           <n-input v-model:value="form.user" placeholder="ubuntu" />
         </n-form-item>
         <n-form-item :label="t('remotes.fields.key')">
-          <n-select v-model:value="form.key_id" :options="keyOptions" />
+          <n-select v-model:value="form.key" :options="keyOptions" />
         </n-form-item>
         <n-form-item :label="t('remotes.fields.description')">
           <n-input v-model:value="form.description" type="textarea" :rows="2" />
@@ -149,7 +186,7 @@ onMounted(async () => {
       <template #action>
         <n-space justify="end">
           <n-button @click="showModal = false">{{ t('common.cancel') }}</n-button>
-          <n-button type="primary" @click="submitForm">{{ editingId ? t('common.save') : t('common.add') }}</n-button>
+          <n-button type="primary" @click="submitForm">{{ editingName ? t('common.save') : t('common.add') }}</n-button>
         </n-space>
       </template>
     </n-modal>
