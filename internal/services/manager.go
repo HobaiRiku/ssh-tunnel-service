@@ -23,13 +23,25 @@ const (
 	reconnectStableAfter = 20 * time.Second // uptime past which backoff resets
 )
 
+// stopGracePeriod is how long Stop waits for ssh to exit after a graceful
+// terminate signal before escalating to SIGKILL.
+const stopGracePeriod = 5 * time.Second
+
+// managedProc tracks a running ssh child together with a channel that is closed
+// once the process has exited and been reaped, so Stop/Restart can wait for the
+// old connection to be fully gone before re-binding ports.
+type managedProc struct {
+	cmd  *exec.Cmd
+	done chan struct{}
+}
+
 // Manager launches and tracks ssh child processes for each tunnel (keyed by
 // tunnel name). auto_start tunnels are supervised: if the ssh process exits
 // unexpectedly the manager reconnects with exponential backoff until the tunnel
 // is stopped or removed.
 type Manager struct {
 	mu       sync.Mutex
-	procs    map[string]*exec.Cmd
+	procs    map[string]*managedProc
 	desired  map[string]bool        // name -> should be running (supervised)
 	attempts map[string]int         // name -> consecutive reconnect attempts
 	timers   map[string]*time.Timer // name -> pending reconnect timer
@@ -47,7 +59,7 @@ func NewManager(baseCtx context.Context, reg *Registry, rt *Runtime, logger *slo
 		baseCtx = context.Background()
 	}
 	return &Manager{
-		procs:    map[string]*exec.Cmd{},
+		procs:    map[string]*managedProc{},
 		desired:  map[string]bool{},
 		attempts: map[string]int{},
 		timers:   map[string]*time.Timer{},
@@ -94,24 +106,26 @@ func (m *Manager) Start(name string) error {
 		m.rt.SetError(name, err.Error())
 		return fmt.Errorf("start tunnel %s: %w", name, err)
 	}
-	m.procs[name] = cmd
+	mp := &managedProc{cmd: cmd, done: make(chan struct{})}
+	m.procs[name] = mp
 	m.desired[name] = true
 	m.rt.SetRunning(name, cmd.Process.Pid)
 	startedAt := time.Now()
 	m.mu.Unlock()
 
 	m.logger.Info("tunnel started", "name", name, "pid", cmd.Process.Pid, "remote", remote.Name, "key", remote.Key, "args", args)
-	go m.waitProcess(name, cmd, &stderr, startedAt)
+	go m.waitProcess(name, mp, &stderr, startedAt)
 	return nil
 }
 
-func (m *Manager) waitProcess(name string, cmd *exec.Cmd, stderr *bytes.Buffer, startedAt time.Time) {
-	waitErr := cmd.Wait()
+func (m *Manager) waitProcess(name string, mp *managedProc, stderr *bytes.Buffer, startedAt time.Time) {
+	defer close(mp.done)
+	waitErr := mp.cmd.Wait()
 	stderrText := strings.TrimSpace(stderr.String())
 
 	m.mu.Lock()
 	current, ok := m.procs[name]
-	if !ok || current != cmd {
+	if !ok || current != mp {
 		m.mu.Unlock()
 		return
 	}
@@ -195,19 +209,22 @@ func (m *Manager) Command(name string) (TunnelCommandPreview, error) {
 	}, nil
 }
 
-// Stop kills the running tunnel process and cancels supervision/reconnects.
+// Stop terminates the running tunnel process and cancels supervision/reconnects.
+// It signals ssh to shut down gracefully and waits for it to exit before
+// returning. The wait is what makes a subsequent Start (e.g. Restart) reliable:
+// a -R remote forward keeps the server-side listening port bound until the ssh
+// connection is gone, so re-binding it (ExitOnForwardFailure=yes) only succeeds
+// once the old process has fully exited.
 func (m *Manager) Stop(name string) error {
 	m.mu.Lock()
 	m.desired[name] = false
 	hadTimer := m.timers[name] != nil
 	m.cancelTimerLocked(name)
-	cmd, running := m.procs[name]
+	mp, running := m.procs[name]
 	m.mu.Unlock()
 
-	if running && cmd.Process != nil {
-		if err := cmd.Process.Kill(); err != nil {
-			return fmt.Errorf("kill tunnel %s: %w", name, err)
-		}
+	if running && mp.cmd.Process != nil {
+		m.terminate(name, mp)
 	}
 	if !running && !hadTimer {
 		return fmt.Errorf("tunnel %q is not running", name)
@@ -215,6 +232,24 @@ func (m *Manager) Stop(name string) error {
 	m.rt.SetStopped(name)
 	m.logger.Info("tunnel stopped", "name", name)
 	return nil
+}
+
+// terminate asks ssh to exit cleanly (SIGTERM) so the server releases any -R
+// remote-forward listener immediately, then waits for the process to actually
+// exit — escalating to SIGKILL if it overstays the grace period.
+func (m *Manager) terminate(name string, mp *managedProc) {
+	if err := signalTerminate(mp.cmd.Process); err != nil {
+		_ = mp.cmd.Process.Kill()
+		<-mp.done
+		return
+	}
+	select {
+	case <-mp.done:
+	case <-time.After(stopGracePeriod):
+		m.logger.Warn("tunnel did not exit gracefully; killing", "name", name)
+		_ = mp.cmd.Process.Kill()
+		<-mp.done
+	}
 }
 
 // Forget drops all supervision state for a removed tunnel.
@@ -233,11 +268,16 @@ func (m *Manager) cancelTimerLocked(name string) {
 	}
 }
 
-// Restart restarts a running tunnel to apply configuration changes.
+// Restart brings a tunnel back up cleanly — to apply configuration changes or
+// to recover a stale connection. If it is currently running it is stopped first
+// (which waits for the old ssh to exit so ports are released); a stopped tunnel
+// is simply started.
 func (m *Manager) Restart(name, reason string) error {
 	m.logger.Info("restarting tunnel", "name", name, "reason", reason)
-	if err := m.Stop(name); err != nil {
-		return err
+	if m.IsRunning(name) {
+		if err := m.Stop(name); err != nil {
+			return err
+		}
 	}
 	if err := m.Start(name); err != nil {
 		m.logger.Error("tunnel restart failed", "name", name, "reason", reason, "err", err)
@@ -296,6 +336,12 @@ func sshArgs(tunnel config.Tunnel, remote config.Remote, key *config.SSHKey, app
 		"-o", "KbdInteractiveAuthentication=no",
 		"-o", "NumberOfPasswordPrompts=0",
 		"-o", "ExitOnForwardFailure=yes",
+		// Keepalives let ssh notice a half-dead connection and exit, so a stale
+		// forward (especially -R, whose remote listener otherwise lingers) gets
+		// torn down and — for auto_start tunnels — re-established automatically.
+		"-o", "ServerAliveInterval=15",
+		"-o", "ServerAliveCountMax=3",
+		"-o", "TCPKeepAlive=yes",
 	}
 	args = append(args, sshHostKeyArgs(appCfg)...)
 	if key != nil {

@@ -26,6 +26,7 @@ func tunnelCmd() *cobra.Command {
 		tunnelRmCmd(),
 		tunnelStartCmd(),
 		tunnelStopCmd(),
+		tunnelRestartCmd(),
 	)
 	return root
 }
@@ -213,6 +214,17 @@ func tunnelStopCmd() *cobra.Command {
 		Args:  cobra.ExactArgs(1),
 		RunE: func(_ *cobra.Command, args []string) error {
 			return callHTTPAction(rootFlags.Home, "POST", "/api/tunnels/"+url.PathEscape(args[0])+"/stop")
+		},
+	}
+}
+
+func tunnelRestartCmd() *cobra.Command {
+	return &cobra.Command{
+		Use:   "restart <name>",
+		Short: "Restart a tunnel (stop if running, then start) via the running service",
+		Args:  cobra.ExactArgs(1),
+		RunE: func(_ *cobra.Command, args []string) error {
+			return callHTTPAction(rootFlags.Home, "POST", "/api/tunnels/"+url.PathEscape(args[0])+"/restart")
 		},
 	}
 }

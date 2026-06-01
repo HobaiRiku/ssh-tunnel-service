@@ -231,6 +231,15 @@ async function doStop(name: string) {
   }
 }
 
+async function doRestart(name: string) {
+  try {
+    await tunnelStore.restartTunnel(name)
+    message.info(t('tunnels.restartRequested'))
+  } catch (error: unknown) {
+    message.error(getErrorMessage(error))
+  }
+}
+
 async function copyName(name: string) {
   const ok = await copyText(name)
   if (ok) message.success(t('common.copied'))
@@ -288,6 +297,12 @@ async function actionStop() {
   if (!activeTunnel.value) return
   closeActions()
   await doStop(activeTunnel.value.name)
+}
+
+async function actionRestart() {
+  if (!activeTunnel.value) return
+  closeActions()
+  await doRestart(activeTunnel.value.name)
 }
 
 async function actionEdit() {
@@ -522,6 +537,7 @@ onUnmounted(() => {
             <n-button secondary @click="void actionEdit()">{{ t('common.edit') }}</n-button>
             <n-button v-if="actionState !== 'running'" type="success" @click="actionStart">{{ t('common.start') }}</n-button>
             <n-button v-else type="warning" @click="actionStop">{{ t('common.stop') }}</n-button>
+            <n-button v-if="actionState !== 'stopped'" secondary @click="actionRestart">{{ t('common.restart') }}</n-button>
           </n-space>
         </n-space>
       </template>

@@ -112,6 +112,9 @@ func TestCommandIncludesManagedTunnelOptions(t *testing.T) {
 		"-o KbdInteractiveAuthentication=no",
 		"-o NumberOfPasswordPrompts=0",
 		"-o ExitOnForwardFailure=yes",
+		"-o ServerAliveInterval=15",
+		"-o ServerAliveCountMax=3",
+		"-o TCPKeepAlive=yes",
 		"-o StrictHostKeyChecking=accept-new",
 		"-o UserKnownHostsFile=/tmp/known_hosts",
 		"-i /tmp/home/keys/deploy-key",
@@ -126,6 +129,81 @@ func TestCommandIncludesManagedTunnelOptions(t *testing.T) {
 	}
 	if !strings.HasPrefix(preview.Command, "ssh ") {
 		t.Fatalf("expected preview command to start with ssh, got %q", preview.Command)
+	}
+}
+
+func TestStopTerminatesGracefullyAndWaitsForExit(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("fake ssh shell script is POSIX-only")
+	}
+
+	home := t.TempDir()
+	marker := filepath.Join(home, "marker")
+
+	binDir := t.TempDir()
+	fakeSSH := filepath.Join(binDir, "ssh")
+	// The fake ssh records how it was asked to die: a clean SIGTERM appends
+	// "term", letting us assert Stop terminates gracefully rather than SIGKILL.
+	script := "#!/bin/sh\n" +
+		"trap 'echo term >> \"" + marker + "\"; exit 0' TERM\n" +
+		"echo ready >> \"" + marker + "\"\n" +
+		"while true; do sleep 0.05; done\n"
+	if err := os.WriteFile(fakeSSH, []byte(script), 0o755); err != nil {
+		t.Fatalf("write fake ssh: %v", err)
+	}
+	t.Setenv("PATH", binDir+string(os.PathListSeparator)+os.Getenv("PATH"))
+
+	cfg := &config.Config{
+		App:     config.AppConfig{SSHHostKeyPolicy: config.SSHHostKeyPolicyInsecure},
+		Remotes: []config.Remote{{Name: "remote-a", Host: "ssh.example.com", Port: 22, User: "ubuntu"}},
+		Tunnels: []config.Tunnel{{Name: "tunnel-a", Remote: "remote-a", Direction: config.DirectionRemote, BindAddress: "127.0.0.1", BindPort: 9000, TargetHost: "127.0.0.1", TargetPort: 8080}},
+	}
+
+	rt := NewRuntime()
+	reg := New(cfg, paths.Paths{Home: home}, rt)
+	mgr := NewManager(context.Background(), reg, rt, slog.New(slog.NewTextHandler(io.Discard, nil)))
+	reg.SetManager(mgr)
+
+	if err := mgr.Start("tunnel-a"); err != nil {
+		t.Fatalf("Start returned error: %v", err)
+	}
+	// Wait until the fake ssh has installed its TERM trap (it appends "ready"),
+	// otherwise Stop could race in before the trap exists and SIGTERM would just
+	// kill it by default — masking whether termination was graceful.
+	deadline := time.Now().Add(3 * time.Second)
+	for time.Now().Before(deadline) {
+		if data, err := os.ReadFile(marker); err == nil && strings.Contains(string(data), "ready") {
+			break
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+
+	if err := mgr.Stop("tunnel-a"); err != nil {
+		t.Fatalf("Stop returned error: %v", err)
+	}
+	// Stop must wait for the process to actually exit before returning, so the
+	// next Start can re-bind the (remote) port without racing the old ssh.
+	if mgr.IsRunning("tunnel-a") {
+		t.Fatalf("expected no running process after Stop returns")
+	}
+
+	data, err := os.ReadFile(marker)
+	if err != nil {
+		t.Fatalf("read marker: %v", err)
+	}
+	if !strings.Contains(string(data), "term") {
+		t.Fatalf("expected graceful SIGTERM termination, marker=%q", string(data))
+	}
+
+	// A clean restart after the wait must succeed.
+	if err := mgr.Restart("tunnel-a", "test"); err != nil {
+		t.Fatalf("Restart returned error: %v", err)
+	}
+	if !mgr.IsRunning("tunnel-a") {
+		t.Fatalf("expected tunnel to be running after Restart")
+	}
+	if err := mgr.Stop("tunnel-a"); err != nil {
+		t.Fatalf("final Stop returned error: %v", err)
 	}
 }
 
