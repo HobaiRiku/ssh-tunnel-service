@@ -32,21 +32,20 @@ type AppConfig struct {
 }
 
 // SSHKey is a managed private key stored beneath the runtime home directory.
+// The unique key is Name; there is no separate id concept.
 type SSHKey struct {
-	ID          string `yaml:"id"          json:"id"`
 	Name        string `yaml:"name"        json:"name"`
 	File        string `yaml:"file"        json:"file"`
 	Description string `yaml:"description" json:"description,omitempty"`
 }
 
-// Remote is a reusable SSH target server definition.
+// Remote is a reusable SSH target server definition, keyed by its unique Name.
 type Remote struct {
-	ID          string `yaml:"id"          json:"id"`
 	Name        string `yaml:"name"        json:"name"`
 	Host        string `yaml:"host"        json:"host"`
 	Port        int    `yaml:"port"        json:"port"`
 	User        string `yaml:"user"        json:"user"`
-	KeyID       string `yaml:"key_id"      json:"key_id,omitempty"`
+	Key         string `yaml:"key,omitempty" json:"key,omitempty"` // references SSHKey.Name
 	Description string `yaml:"description" json:"description,omitempty"`
 }
 
@@ -59,10 +58,10 @@ const (
 )
 
 // Tunnel defines a single ssh -L/-R port-forwarding rule tied to a Remote.
+// The unique key is Name; Remote references the owning Remote by its Name.
 type Tunnel struct {
-	ID          string          `yaml:"id"           json:"id"`
 	Name        string          `yaml:"name"         json:"name"`
-	RemoteID    string          `yaml:"remote_id"    json:"remote_id"`
+	Remote      string          `yaml:"remote"       json:"remote"` // references Remote.Name
 	Direction   TunnelDirection `yaml:"direction"    json:"direction"`
 	BindAddress string          `yaml:"bind_address" json:"bind_address"`
 	BindPort    int             `yaml:"bind_port"    json:"bind_port"`

@@ -37,11 +37,12 @@ func Run(ctx context.Context, opts Options) error {
 
 	rt := services.NewRuntime()
 	reg := services.New(opts.Config, opts.Paths, rt)
-	mgr := services.NewManager(reg, rt, opts.Logger.With("component", "manager"))
+	mgr := services.NewManager(ctx, reg, rt, opts.Logger.With("component", "manager"))
 	reg.SetManager(mgr)
 
-	// AutoStart tunnels marked with auto_start: true
-	mgr.AutoStart(ctx)
+	// AutoStart tunnels marked with auto_start: true; the manager then keeps
+	// them alive (reconnecting on unexpected drops) until ctx is cancelled.
+	mgr.AutoStart()
 
 	router := api.NewRouter(api.Options{
 		Context:  ctx,

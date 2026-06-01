@@ -6,6 +6,8 @@ import (
 	"fmt"
 	"path/filepath"
 	"strings"
+	"unicode"
+	"unicode/utf8"
 )
 
 // GenerateToken returns a 32-byte cryptographically random hex string.
@@ -15,6 +17,38 @@ func GenerateToken() string {
 		panic("crypto/rand unavailable: " + err.Error())
 	}
 	return hex.EncodeToString(b)
+}
+
+// MaxNameLength bounds resource names so they stay usable as URL path segments
+// and table labels.
+const MaxNameLength = 64
+
+// ValidateName enforces the tightened rules for a resource name now that the
+// name is the unique identifier: non-empty, no surrounding whitespace, no path
+// separators or control characters, and a sane length cap. kind is used only to
+// build a readable error message (e.g. "tunnel", "remote", "key").
+func ValidateName(kind, name string) error {
+	if name == "" {
+		return fmt.Errorf("%s name is required", kind)
+	}
+	if strings.TrimSpace(name) != name {
+		return fmt.Errorf("%s name %q must not have leading or trailing whitespace", kind, name)
+	}
+	if !utf8.ValidString(name) {
+		return fmt.Errorf("%s name must be valid UTF-8", kind)
+	}
+	if utf8.RuneCountInString(name) > MaxNameLength {
+		return fmt.Errorf("%s name must be at most %d characters", kind, MaxNameLength)
+	}
+	for _, r := range name {
+		if r == '/' || r == '\\' {
+			return fmt.Errorf("%s name %q must not contain '/' or '\\'", kind, name)
+		}
+		if unicode.IsControl(r) {
+			return fmt.Errorf("%s name %q must not contain control characters", kind, name)
+		}
+	}
+	return nil
 }
 
 // Validate checks the parsed config for required fields and consistency.
@@ -35,72 +69,69 @@ func Validate(cfg *Config) error {
 		return fmt.Errorf("app.ssh_known_hosts_file must be an absolute path")
 	}
 
-	keyIDs := map[string]bool{}
+	keyNames := map[string]bool{}
 	for i, key := range cfg.Keys {
-		if key.ID == "" {
-			return fmt.Errorf("keys[%d]: id is required", i)
+		if err := ValidateName("key", key.Name); err != nil {
+			return fmt.Errorf("keys[%d]: %w", i, err)
 		}
-		if keyIDs[key.ID] {
-			return fmt.Errorf("keys[%d]: duplicate id %q", i, key.ID)
+		if keyNames[key.Name] {
+			return fmt.Errorf("keys[%d]: duplicate name %q", i, key.Name)
 		}
-		keyIDs[key.ID] = true
-		if key.Name == "" {
-			return fmt.Errorf("keys[%d] (%s): name is required", i, key.ID)
-		}
+		keyNames[key.Name] = true
 		if key.File == "" {
-			return fmt.Errorf("keys[%d] (%s): file is required", i, key.ID)
+			return fmt.Errorf("keys[%d] (%s): file is required", i, key.Name)
 		}
 		if filepath.Base(key.File) != key.File || strings.Contains(key.File, "..") {
-			return fmt.Errorf("keys[%d] (%s): file must be a simple relative file name", i, key.ID)
+			return fmt.Errorf("keys[%d] (%s): file must be a simple relative file name", i, key.Name)
 		}
 	}
 
-	ids := map[string]bool{}
+	remoteNames := map[string]bool{}
 	for i, r := range cfg.Remotes {
-		if r.ID == "" {
-			return fmt.Errorf("remotes[%d]: id is required", i)
+		if err := ValidateName("remote", r.Name); err != nil {
+			return fmt.Errorf("remotes[%d]: %w", i, err)
 		}
-		if ids[r.ID] {
-			return fmt.Errorf("remotes[%d]: duplicate id %q", i, r.ID)
+		if remoteNames[r.Name] {
+			return fmt.Errorf("remotes[%d]: duplicate name %q", i, r.Name)
 		}
-		ids[r.ID] = true
+		remoteNames[r.Name] = true
 		if r.Host == "" {
-			return fmt.Errorf("remotes[%d] (%s): host is required", i, r.ID)
+			return fmt.Errorf("remotes[%d] (%s): host is required", i, r.Name)
 		}
 		if r.Port <= 0 || r.Port > 65535 {
-			return fmt.Errorf("remotes[%d] (%s): port must be 1-65535", i, r.ID)
+			return fmt.Errorf("remotes[%d] (%s): port must be 1-65535", i, r.Name)
 		}
 		if r.User == "" {
-			return fmt.Errorf("remotes[%d] (%s): user is required", i, r.ID)
+			return fmt.Errorf("remotes[%d] (%s): user is required", i, r.Name)
 		}
-		if r.KeyID != "" && !keyIDs[r.KeyID] {
-			return fmt.Errorf("remotes[%d] (%s): key_id %q not found", i, r.ID, r.KeyID)
+		if r.Key != "" && !keyNames[r.Key] {
+			return fmt.Errorf("remotes[%d] (%s): key %q not found", i, r.Name, r.Key)
 		}
 	}
 
-	tids := map[string]bool{}
+	tunnelNames := map[string]bool{}
 	for i, t := range cfg.Tunnels {
-		if t.ID == "" {
-			return fmt.Errorf("tunnels[%d]: id is required", i)
+		if err := ValidateName("tunnel", t.Name); err != nil {
+			return fmt.Errorf("tunnels[%d]: %w", i, err)
 		}
-		if tids[t.ID] {
-			return fmt.Errorf("tunnels[%d]: duplicate id %q", i, t.ID)
+		if tunnelNames[t.Name] {
+			return fmt.Errorf("tunnels[%d]: duplicate name %q", i, t.Name)
 		}
-		tids[t.ID] = true
-		if !ids[t.RemoteID] {
-			return fmt.Errorf("tunnels[%d] (%s): remote_id %q not found", i, t.ID, t.RemoteID)
+		tunnelNames[t.Name] = true
+		if !remoteNames[t.Remote] {
+			return fmt.Errorf("tunnels[%d] (%s): remote %q not found", i, t.Name, t.Remote)
 		}
 		if t.Direction != DirectionLocal && t.Direction != DirectionRemote {
-			return fmt.Errorf("tunnels[%d] (%s): direction must be -L or -R", i, t.ID)
+			return fmt.Errorf("tunnels[%d] (%s): direction must be -L or -R", i, t.Name)
 		}
 		if t.BindPort <= 0 || t.BindPort > 65535 {
-			return fmt.Errorf("tunnels[%d] (%s): bind_port must be 1-65535", i, t.ID)
+			return fmt.Errorf("tunnels[%d] (%s): bind_port must be 1-65535", i, t.Name)
 		}
 		if t.TargetHost == "" {
-			return fmt.Errorf("tunnels[%d] (%s): target_host is required", i, t.ID)
+			return fmt.Errorf("tunnels[%d] (%s): target_host is required", i, t.Name)
 		}
 		if t.TargetPort <= 0 || t.TargetPort > 65535 {
-			return fmt.Errorf("tunnels[%d] (%s): target_port must be 1-65535", i, t.ID)
+			return fmt.Errorf("tunnels[%d] (%s): target_port must be 1-65535", i, t.Name)
 		}
 	}
 	return nil

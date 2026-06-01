@@ -24,13 +24,13 @@ export const useRemotesStore = defineStore('remotes', () => {
     await fetchRemotes()
   }
 
-  async function updateRemote(id: string, r: Remote) {
-    await api.updateRemote(id, r)
+  async function updateRemote(name: string, r: Remote) {
+    await api.updateRemote(name, r)
     await fetchRemotes()
   }
 
-  async function deleteRemote(id: string) {
-    await api.deleteRemote(id)
+  async function deleteRemote(name: string) {
+    await api.deleteRemote(name)
     await fetchRemotes()
   }
 

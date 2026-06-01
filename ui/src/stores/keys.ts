@@ -24,13 +24,13 @@ export const useKeysStore = defineStore('keys', () => {
     await fetchKeys()
   }
 
-  async function updateKey(id: string, key: SSHKeyPayload) {
-    await api.updateKey(id, key)
+  async function updateKey(name: string, key: SSHKeyPayload) {
+    await api.updateKey(name, key)
     await fetchKeys()
   }
 
-  async function deleteKey(id: string) {
-    await api.deleteKey(id)
+  async function deleteKey(name: string) {
+    await api.deleteKey(name)
     await fetchKeys()
   }
 

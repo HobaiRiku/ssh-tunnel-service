@@ -38,9 +38,9 @@ func remoteListCmd() *cobra.Command {
 				return json.NewEncoder(os.Stdout).Encode(remotes)
 			}
 			tw := tabwriter.NewWriter(os.Stdout, 0, 4, 2, ' ', 0)
-			fmt.Fprintln(tw, "ID\tNAME\tHOST\tPORT\tUSER\tDESCRIPTION")
+			fmt.Fprintln(tw, "NAME\tHOST\tPORT\tUSER\tKEY\tDESCRIPTION")
 			for _, r := range remotes {
-				fmt.Fprintf(tw, "%s\t%s\t%s\t%d\t%s\t%s\n", r.ID, r.Name, r.Host, r.Port, r.User, r.Description)
+				fmt.Fprintf(tw, "%s\t%s\t%d\t%s\t%s\t%s\n", r.Name, r.Host, r.Port, r.User, r.Key, r.Description)
 			}
 			return tw.Flush()
 		},
@@ -51,8 +51,8 @@ func remoteListCmd() *cobra.Command {
 
 func remoteAddCmd() *cobra.Command {
 	var (
-		id, name, host, user, desc string
-		port                       int
+		name, host, user, key, desc string
+		port                        int
 	)
 	cmd := &cobra.Command{
 		Use:   "add",
@@ -62,21 +62,20 @@ func remoteAddCmd() *cobra.Command {
 			if err != nil {
 				return err
 			}
-			r := config.Remote{ID: id, Name: name, Host: host, Port: port, User: user, Description: desc}
+			r := config.Remote{Name: name, Host: host, Port: port, User: user, Key: key, Description: desc}
 			if err := reg.AddRemote(r); err != nil {
 				return err
 			}
-			fmt.Printf("Remote %q (%s) added.\n", id, name)
+			fmt.Printf("Remote %q added.\n", name)
 			return nil
 		},
 	}
-	cmd.Flags().StringVar(&id, "id", "", "unique ID (required)")
-	cmd.Flags().StringVar(&name, "name", "", "display name (required)")
+	cmd.Flags().StringVar(&name, "name", "", "unique name (required)")
 	cmd.Flags().StringVar(&host, "host", "", "SSH host (required)")
 	cmd.Flags().IntVar(&port, "port", 22, "SSH port")
 	cmd.Flags().StringVar(&user, "user", "", "SSH user")
+	cmd.Flags().StringVar(&key, "key", "", "managed key name")
 	cmd.Flags().StringVar(&desc, "description", "", "description")
-	_ = cmd.MarkFlagRequired("id")
 	_ = cmd.MarkFlagRequired("name")
 	_ = cmd.MarkFlagRequired("host")
 	return cmd
@@ -84,13 +83,13 @@ func remoteAddCmd() *cobra.Command {
 
 func remoteUpdateCmd() *cobra.Command {
 	var (
-		name, host, user, desc, portStr string
+		name, host, user, key, desc, portStr string
 	)
 	cmd := &cobra.Command{
-		Use:   "update <id>",
-		Short: "Update a remote",
+		Use:   "update <name>",
+		Short: "Update a remote (use --name to rename)",
 		Args:  cobra.ExactArgs(1),
-		RunE: func(_ *cobra.Command, args []string) error {
+		RunE: func(c *cobra.Command, args []string) error {
 			reg, _, err := registryForCLI(rootFlags.Home)
 			if err != nil {
 				return err
@@ -116,6 +115,9 @@ func remoteUpdateCmd() *cobra.Command {
 			if user != "" {
 				r.User = user
 			}
+			if c.Flags().Changed("key") {
+				r.Key = key
+			}
 			if desc != "" {
 				r.Description = desc
 			}
@@ -126,17 +128,18 @@ func remoteUpdateCmd() *cobra.Command {
 			return nil
 		},
 	}
-	cmd.Flags().StringVar(&name, "name", "", "display name")
+	cmd.Flags().StringVar(&name, "name", "", "rename the remote")
 	cmd.Flags().StringVar(&host, "host", "", "SSH host")
 	cmd.Flags().StringVar(&portStr, "port", "", "SSH port")
 	cmd.Flags().StringVar(&user, "user", "", "SSH user")
+	cmd.Flags().StringVar(&key, "key", "", "managed key name (empty to clear)")
 	cmd.Flags().StringVar(&desc, "description", "", "description")
 	return cmd
 }
 
 func remoteRmCmd() *cobra.Command {
 	return &cobra.Command{
-		Use:   "rm <id>",
+		Use:   "rm <name>",
 		Short: "Remove a remote",
 		Args:  cobra.ExactArgs(1),
 		RunE: func(_ *cobra.Command, args []string) error {

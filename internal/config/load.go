@@ -4,8 +4,6 @@ import (
 	"errors"
 	"fmt"
 	"os"
-
-	"gopkg.in/yaml.v3"
 )
 
 // MissingFileError is returned when config.yaml doesn't exist yet.
@@ -29,13 +27,13 @@ func LoadWithDefaults(path, defaultKnownHosts string) (*Config, error) {
 		}
 		return nil, fmt.Errorf("read config %s: %w", path, err)
 	}
-	var cfg Config
-	if err := yaml.Unmarshal(data, &cfg); err != nil {
+	cfg, err := parseConfig(data)
+	if err != nil {
 		return nil, fmt.Errorf("parse config %s: %w", path, err)
 	}
-	ApplyDefaults(&cfg, defaultKnownHosts)
-	if err := Validate(&cfg); err != nil {
+	ApplyDefaults(cfg, defaultKnownHosts)
+	if err := Validate(cfg); err != nil {
 		return nil, fmt.Errorf("invalid config: %w", err)
 	}
-	return &cfg, nil
+	return cfg, nil
 }

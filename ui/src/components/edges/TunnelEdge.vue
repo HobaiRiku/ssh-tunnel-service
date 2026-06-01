@@ -7,6 +7,7 @@ type TunnelEdgeData = {
   remotePort?: number
   localPort?: number
   selected?: boolean
+  reversed?: boolean
 }
 
 const props = defineProps<EdgeProps<TunnelEdgeData>>()
@@ -48,7 +49,7 @@ const localPortText = computed(() => (props.data?.localPort == null ? '' : Strin
       :style="labelPositionStyle"
     >
       <span class="tunnel-edge-port">{{ remotePortText }}</span>
-      <span class="tunnel-edge-icon" aria-hidden="true">→</span>
+      <span class="tunnel-edge-icon" aria-hidden="true">{{ data?.reversed ? '←' : '→' }}</span>
       <span class="tunnel-edge-port">{{ localPortText }}</span>
     </div>
   </EdgeLabelRenderer>

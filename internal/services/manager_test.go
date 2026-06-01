@@ -91,14 +91,14 @@ func TestDiagnoseSSHFailure(t *testing.T) {
 func TestCommandIncludesManagedTunnelOptions(t *testing.T) {
 	cfg := &config.Config{
 		App:     config.AppConfig{SSHHostKeyPolicy: config.SSHHostKeyPolicyAcceptNew, SSHKnownHosts: "/tmp/known_hosts"},
-		Keys:    []config.SSHKey{{ID: "deploy-key", Name: "Deploy", File: "deploy-key"}},
-		Remotes: []config.Remote{{ID: "remote-a", Host: "ssh.example.com", Port: 2222, User: "ubuntu", KeyID: "deploy-key"}},
-		Tunnels: []config.Tunnel{{ID: "tunnel-a", RemoteID: "remote-a", Direction: config.DirectionLocal, BindAddress: "127.0.0.1", BindPort: 15432, TargetHost: "db.internal", TargetPort: 5432, SSHOptions: []string{"-o", "ServerAliveInterval=30"}}},
+		Keys:    []config.SSHKey{{Name: "deploy-key", File: "deploy-key"}},
+		Remotes: []config.Remote{{Name: "remote-a", Host: "ssh.example.com", Port: 2222, User: "ubuntu", Key: "deploy-key"}},
+		Tunnels: []config.Tunnel{{Name: "tunnel-a", Remote: "remote-a", Direction: config.DirectionLocal, BindAddress: "127.0.0.1", BindPort: 15432, TargetHost: "db.internal", TargetPort: 5432, SSHOptions: []string{"-o", "ServerAliveInterval=30"}}},
 	}
 
 	rt := NewRuntime()
 	reg := New(cfg, paths.Paths{Home: "/tmp/home"}, rt)
-	mgr := NewManager(reg, rt, slog.New(slog.NewTextHandler(io.Discard, nil)))
+	mgr := NewManager(context.Background(), reg, rt, slog.New(slog.NewTextHandler(io.Discard, nil)))
 
 	preview, err := mgr.Command("tunnel-a")
 	if err != nil {
@@ -155,17 +155,17 @@ func TestStartMarksPasswordRemoteAsError(t *testing.T) {
 
 	cfg := &config.Config{
 		App:     config.AppConfig{SSHHostKeyPolicy: config.SSHHostKeyPolicyInsecure},
-		Keys:    []config.SSHKey{{ID: "deploy-key", Name: "Deploy", File: "deploy-key"}},
-		Remotes: []config.Remote{{ID: "remote-a", Host: "ssh.example.com", Port: 22, User: "ubuntu", KeyID: "deploy-key"}},
-		Tunnels: []config.Tunnel{{ID: "tunnel-a", RemoteID: "remote-a", Direction: config.DirectionLocal, BindAddress: "127.0.0.1", BindPort: 15432, TargetHost: "127.0.0.1", TargetPort: 5432}},
+		Keys:    []config.SSHKey{{Name: "deploy-key", File: "deploy-key"}},
+		Remotes: []config.Remote{{Name: "remote-a", Host: "ssh.example.com", Port: 22, User: "ubuntu", Key: "deploy-key"}},
+		Tunnels: []config.Tunnel{{Name: "tunnel-a", Remote: "remote-a", Direction: config.DirectionLocal, BindAddress: "127.0.0.1", BindPort: 15432, TargetHost: "127.0.0.1", TargetPort: 5432}},
 	}
 
 	rt := NewRuntime()
 	reg := New(cfg, paths.Paths{Home: home}, rt)
-	mgr := NewManager(reg, rt, slog.New(slog.NewTextHandler(io.Discard, nil)))
+	mgr := NewManager(context.Background(), reg, rt, slog.New(slog.NewTextHandler(io.Discard, nil)))
 	reg.SetManager(mgr)
 
-	if err := mgr.Start(context.Background(), "tunnel-a"); err != nil {
+	if err := mgr.Start("tunnel-a"); err != nil {
 		t.Fatalf("Start returned error: %v", err)
 	}
 

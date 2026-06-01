@@ -1,7 +1,6 @@
 package services
 
 import (
-	"context"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -15,6 +14,8 @@ import (
 )
 
 // Registry wires together config, remotes, tunnels, runtime, and the manager.
+// Every resource is identified by its unique Name; remotes reference a key by
+// name and tunnels reference their remote by name.
 type Registry struct {
 	mu      sync.RWMutex
 	cfg     *config.Config
@@ -57,30 +58,30 @@ func (r *Registry) ListKeys() []config.SSHKey {
 	return out
 }
 
-func (r *Registry) GetKey(id string) (config.SSHKey, error) {
+func (r *Registry) GetKey(name string) (config.SSHKey, error) {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
 	for _, key := range r.cfg.Keys {
-		if key.ID == id {
+		if key.Name == name {
 			return key, nil
 		}
 	}
-	return config.SSHKey{}, fmt.Errorf("key %q: %w", id, ErrNotFound)
+	return config.SSHKey{}, fmt.Errorf("key %q: %w", name, ErrNotFound)
 }
 
 func (r *Registry) AddKey(input SSHKeyInput) error {
 	r.mu.Lock()
 	next := cloneConfig(r.cfg)
-	for _, existing := range next.Keys {
-		if existing.ID == input.ID {
-			r.mu.Unlock()
-			return fmt.Errorf("key %q already exists", input.ID)
-		}
-	}
-	key, oldFile, newFilePath, err := r.prepareKey(next, config.SSHKey{}, input)
+	key, oldFile, newFilePath, err := r.prepareKey(config.SSHKey{}, input)
 	if err != nil {
 		r.mu.Unlock()
 		return err
+	}
+	for _, existing := range next.Keys {
+		if existing.Name == key.Name {
+			r.mu.Unlock()
+			return fmt.Errorf("key %q already exists", key.Name)
+		}
 	}
 	next.Keys = append(next.Keys, key)
 	if err := r.persist(next); err != nil {
@@ -91,48 +92,58 @@ func (r *Registry) AddKey(input SSHKeyInput) error {
 	return r.finalizeKeyMaterial(oldFile, newFilePath)
 }
 
-func (r *Registry) UpdateKey(id string, input SSHKeyInput) error {
-	restartIDs := []string{}
-	reason := fmt.Sprintf("key %s updated", id)
+func (r *Registry) UpdateKey(name string, input SSHKeyInput) error {
 	r.mu.Lock()
 	next := cloneConfig(r.cfg)
 	for i, existing := range next.Keys {
-		if existing.ID == id {
-			key, oldFile, newFilePath, err := r.prepareKey(next, existing, input)
-			if err != nil {
-				r.mu.Unlock()
-				return err
-			}
-			next.Keys[i] = key
-			restartIDs = r.runningTunnelIDsForKeyLocked(id)
-			if err := r.persist(next); err != nil {
-				r.mu.Unlock()
-				return err
-			}
-			r.mu.Unlock()
-			if err := r.finalizeKeyMaterial(oldFile, newFilePath); err != nil {
-				return err
-			}
-			return r.restartRunningTunnels(restartIDs, reason)
+		if existing.Name != name {
+			continue
 		}
+		key, oldFile, newFilePath, err := r.prepareKey(existing, input)
+		if err != nil {
+			r.mu.Unlock()
+			return err
+		}
+		if key.Name != name && containsKeyName(next.Keys, key.Name) {
+			r.mu.Unlock()
+			return fmt.Errorf("key %q already exists", key.Name)
+		}
+		next.Keys[i] = key
+		// A rename must cascade to every remote that references this key.
+		if key.Name != name {
+			for j := range next.Remotes {
+				if next.Remotes[j].Key == name {
+					next.Remotes[j].Key = key.Name
+				}
+			}
+		}
+		restartNames := r.runningTunnelNamesForKeyLocked(next, key.Name)
+		if err := r.persist(next); err != nil {
+			r.mu.Unlock()
+			return err
+		}
+		r.mu.Unlock()
+		if err := r.finalizeKeyMaterial(oldFile, newFilePath); err != nil {
+			return err
+		}
+		return r.restartRunningTunnels(restartNames, fmt.Sprintf("key %s updated", key.Name))
 	}
 	r.mu.Unlock()
-	return fmt.Errorf("key %q: %w", id, ErrNotFound)
+	return fmt.Errorf("key %q: %w", name, ErrNotFound)
 }
 
-func (r *Registry) DeleteKey(id string) error {
-	var key config.SSHKey
+func (r *Registry) DeleteKey(name string) error {
 	r.mu.Lock()
 	next := cloneConfig(r.cfg)
 	for _, remote := range next.Remotes {
-		if remote.KeyID == id {
+		if remote.Key == name {
 			r.mu.Unlock()
-			return fmt.Errorf("key %q is referenced by remote %q", id, remote.ID)
+			return fmt.Errorf("key %q is referenced by remote %q", name, remote.Name)
 		}
 	}
 	for i, existing := range next.Keys {
-		if existing.ID == id {
-			key = existing
+		if existing.Name == name {
+			key := existing
 			next.Keys = append(next.Keys[:i], next.Keys[i+1:]...)
 			if err := r.persist(next); err != nil {
 				r.mu.Unlock()
@@ -148,7 +159,7 @@ func (r *Registry) DeleteKey(id string) error {
 		}
 	}
 	r.mu.Unlock()
-	return fmt.Errorf("key %q: %w", id, ErrNotFound)
+	return fmt.Errorf("key %q: %w", name, ErrNotFound)
 }
 
 // ── Remotes ──────────────────────────────────────────────────────────────────
@@ -161,75 +172,90 @@ func (r *Registry) ListRemotes() []config.Remote {
 	return out
 }
 
-func (r *Registry) GetRemote(id string) (config.Remote, error) {
+func (r *Registry) GetRemote(name string) (config.Remote, error) {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
 	for _, remote := range r.cfg.Remotes {
-		if remote.ID == id {
+		if remote.Name == name {
 			return remote, nil
 		}
 	}
-	return config.Remote{}, fmt.Errorf("remote %q: %w", id, ErrNotFound)
+	return config.Remote{}, fmt.Errorf("remote %q: %w", name, ErrNotFound)
 }
 
 func (r *Registry) AddRemote(remote config.Remote) error {
 	r.mu.Lock()
 	defer r.mu.Unlock()
-	next := cloneConfig(r.cfg)
-	if err := requireKey(next, remote.KeyID); err != nil {
+	if err := config.ValidateName("remote", remote.Name); err != nil {
 		return err
 	}
-	for _, existing := range next.Remotes {
-		if existing.ID == remote.ID {
-			return fmt.Errorf("remote %q already exists", remote.ID)
-		}
+	next := cloneConfig(r.cfg)
+	if err := requireKey(next, remote.Key); err != nil {
+		return err
+	}
+	if containsRemoteName(next.Remotes, remote.Name) {
+		return fmt.Errorf("remote %q already exists", remote.Name)
 	}
 	next.Remotes = append(next.Remotes, remote)
 	return r.persist(next)
 }
 
-func (r *Registry) UpdateRemote(id string, update config.Remote) error {
-	restartIDs := []string{}
-	reason := fmt.Sprintf("remote %s updated", id)
+func (r *Registry) UpdateRemote(name string, update config.Remote) error {
 	r.mu.Lock()
+	if err := config.ValidateName("remote", update.Name); err != nil {
+		r.mu.Unlock()
+		return err
+	}
 	next := cloneConfig(r.cfg)
-	if err := requireKey(next, update.KeyID); err != nil {
+	if err := requireKey(next, update.Key); err != nil {
 		r.mu.Unlock()
 		return err
 	}
 	for i, existing := range next.Remotes {
-		if existing.ID == id {
-			update.ID = id
-			next.Remotes[i] = update
-			restartIDs = r.runningTunnelIDsForRemoteLocked(id)
-			if err := r.persist(next); err != nil {
-				r.mu.Unlock()
-				return err
-			}
-			r.mu.Unlock()
-			return r.restartRunningTunnels(restartIDs, reason)
+		if existing.Name != name {
+			continue
 		}
+		if update.Name != name && containsRemoteName(next.Remotes, update.Name) {
+			r.mu.Unlock()
+			return fmt.Errorf("remote %q already exists", update.Name)
+		}
+		next.Remotes[i] = update
+		// A rename must cascade to every tunnel that references this remote.
+		if update.Name != name {
+			for j := range next.Tunnels {
+				if next.Tunnels[j].Remote == name {
+					next.Tunnels[j].Remote = update.Name
+				}
+			}
+		}
+		restartNames := r.runningTunnelNamesForRemoteLocked(next, update.Name)
+		if err := r.persist(next); err != nil {
+			r.mu.Unlock()
+			return err
+		}
+		r.mu.Unlock()
+		return r.restartRunningTunnels(restartNames, fmt.Sprintf("remote %s updated", update.Name))
 	}
 	r.mu.Unlock()
-	return fmt.Errorf("remote %q: %w", id, ErrNotFound)
+	return fmt.Errorf("remote %q: %w", name, ErrNotFound)
 }
 
-func (r *Registry) DeleteRemote(id string) error {
+func (r *Registry) DeleteRemote(name string) error {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	next := cloneConfig(r.cfg)
 	for _, t := range next.Tunnels {
-		if t.RemoteID == id {
-			return fmt.Errorf("remote %q is referenced by tunnel %q", id, t.ID)
+		if t.Remote == name {
+			return fmt.Errorf("remote %q is referenced by tunnel %q", name, t.Name)
 		}
 	}
 	for i, existing := range next.Remotes {
-		if existing.ID == id {
+		if existing.Name == name {
 			next.Remotes = append(next.Remotes[:i], next.Remotes[i+1:]...)
 			return r.persist(next)
 		}
 	}
-	return fmt.Errorf("remote %q: %w", id, ErrNotFound)
+	return fmt.Errorf("remote %q: %w", name, ErrNotFound)
 }
 
 // ── Tunnels ───────────────────────────────────────────────────────────────────
@@ -239,177 +265,248 @@ func (r *Registry) ListTunnels() []TunnelStatus {
 	defer r.mu.RUnlock()
 	out := make([]TunnelStatus, 0, len(r.cfg.Tunnels))
 	for _, t := range r.cfg.Tunnels {
-		state, pid, errMsg := r.runtime.Get(t.ID)
+		state, pid, errMsg := r.runtime.Get(t.Name)
 		out = append(out, TunnelStatus{Tunnel: t, State: state, PID: pid, Error: errMsg})
 	}
 	return out
 }
 
-func (r *Registry) GetTunnel(id string) (TunnelStatus, error) {
+func (r *Registry) GetTunnel(name string) (TunnelStatus, error) {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
 	for _, t := range r.cfg.Tunnels {
-		if t.ID == id {
-			state, pid, errMsg := r.runtime.Get(t.ID)
+		if t.Name == name {
+			state, pid, errMsg := r.runtime.Get(t.Name)
 			return TunnelStatus{Tunnel: t, State: state, PID: pid, Error: errMsg}, nil
 		}
 	}
-	return TunnelStatus{}, fmt.Errorf("tunnel %q: %w", id, ErrNotFound)
+	return TunnelStatus{}, fmt.Errorf("tunnel %q: %w", name, ErrNotFound)
 }
 
 func (r *Registry) AddTunnel(t config.Tunnel) error {
 	r.mu.Lock()
-	defer r.mu.Unlock()
-	next := cloneConfig(r.cfg)
-	if err := requireRemote(next, t.RemoteID); err != nil {
+	if err := config.ValidateName("tunnel", t.Name); err != nil {
+		r.mu.Unlock()
 		return err
 	}
-	for _, existing := range next.Tunnels {
-		if existing.ID == t.ID {
-			return fmt.Errorf("tunnel %q already exists", t.ID)
-		}
+	next := cloneConfig(r.cfg)
+	if err := requireRemote(next, t.Remote); err != nil {
+		r.mu.Unlock()
+		return err
+	}
+	if containsTunnelName(next.Tunnels, t.Name) {
+		r.mu.Unlock()
+		return fmt.Errorf("tunnel %q already exists", t.Name)
 	}
 	next.Tunnels = append(next.Tunnels, t)
-	return r.persist(next)
+	if err := r.persist(next); err != nil {
+		r.mu.Unlock()
+		return err
+	}
+	mgr := r.manager
+	r.mu.Unlock()
+
+	// auto_start means "keep it running": start it now (and the manager keeps it
+	// alive across drops), not only on the next service restart. A start failure
+	// is surfaced through the tunnel's runtime state, not as an add error — the
+	// definition was persisted successfully.
+	if t.AutoStart && mgr != nil {
+		_ = mgr.Start(t.Name)
+	}
+	return nil
 }
 
-func (r *Registry) UpdateTunnel(id string, update config.Tunnel) error {
-	restartIDs := []string{}
-	reason := fmt.Sprintf("tunnel %s updated", id)
+func (r *Registry) UpdateTunnel(name string, update config.Tunnel) error {
 	r.mu.Lock()
+	if err := config.ValidateName("tunnel", update.Name); err != nil {
+		r.mu.Unlock()
+		return err
+	}
 	next := cloneConfig(r.cfg)
-	if err := requireRemote(next, update.RemoteID); err != nil {
+	if err := requireRemote(next, update.Remote); err != nil {
 		r.mu.Unlock()
 		return err
 	}
 	for i, existing := range next.Tunnels {
-		if existing.ID == id {
-			update.ID = id
-			next.Tunnels[i] = update
-			if state, _, _ := r.runtime.Get(id); state == StateRunning {
-				restartIDs = []string{id}
-			}
+		if existing.Name != name {
+			continue
+		}
+		if update.Name != name && containsTunnelName(next.Tunnels, update.Name) {
+			r.mu.Unlock()
+			return fmt.Errorf("tunnel %q already exists", update.Name)
+		}
+		next.Tunnels[i] = update
+		state, _, _ := r.runtime.Get(name)
+		wasRunning := state == StateRunning
+		if err := r.persist(next); err != nil {
+			r.mu.Unlock()
+			return err
+		}
+		mgr := r.manager
+		r.mu.Unlock()
+		return applyTunnelState(mgr, name, update, wasRunning, fmt.Sprintf("tunnel %s updated", update.Name))
+	}
+	r.mu.Unlock()
+	return fmt.Errorf("tunnel %q: %w", name, ErrNotFound)
+}
+
+// applyTunnelState reconciles the running ssh process with a tunnel definition
+// after an update: a rename moves the process under the new name, a config
+// change restarts it, and enabling auto_start brings it up.
+func applyTunnelState(mgr *Manager, oldName string, update config.Tunnel, wasRunning bool, reason string) error {
+	if mgr == nil {
+		return nil
+	}
+	renamed := update.Name != oldName
+	if wasRunning && renamed {
+		_ = mgr.Stop(oldName)
+		return mgr.Start(update.Name)
+	}
+	if wasRunning {
+		return mgr.Restart(update.Name, reason)
+	}
+	if update.AutoStart {
+		return mgr.Start(update.Name)
+	}
+	return nil
+}
+
+func (r *Registry) DeleteTunnel(name string) error {
+	r.mu.Lock()
+	if state, _, _ := r.runtime.Get(name); state == StateRunning {
+		r.mu.Unlock()
+		return fmt.Errorf("tunnel %q is running", name)
+	}
+	next := cloneConfig(r.cfg)
+	for i, existing := range next.Tunnels {
+		if existing.Name == name {
+			next.Tunnels = append(next.Tunnels[:i], next.Tunnels[i+1:]...)
 			if err := r.persist(next); err != nil {
 				r.mu.Unlock()
 				return err
 			}
+			mgr := r.manager
 			r.mu.Unlock()
-			return r.restartRunningTunnels(restartIDs, reason)
+			// Cancel any pending reconnect supervision for the removed tunnel.
+			if mgr != nil {
+				mgr.Forget(name)
+			}
+			return nil
 		}
 	}
 	r.mu.Unlock()
-	return fmt.Errorf("tunnel %q: %w", id, ErrNotFound)
+	return fmt.Errorf("tunnel %q: %w", name, ErrNotFound)
 }
 
-func (r *Registry) DeleteTunnel(id string) error {
-	r.mu.Lock()
-	defer r.mu.Unlock()
-	if state, _, _ := r.runtime.Get(id); state == StateRunning {
-		return fmt.Errorf("tunnel %q is running", id)
+func requireRemote(cfg *config.Config, name string) error {
+	if containsRemoteName(cfg.Remotes, name) {
+		return nil
 	}
-	next := cloneConfig(r.cfg)
-	for i, existing := range next.Tunnels {
-		if existing.ID == id {
-			next.Tunnels = append(next.Tunnels[:i], next.Tunnels[i+1:]...)
-			return r.persist(next)
+	return fmt.Errorf("remote %q: %w", name, ErrNotFound)
+}
+
+func requireKey(cfg *config.Config, name string) error {
+	if name == "" || containsKeyName(cfg.Keys, name) {
+		return nil
+	}
+	return fmt.Errorf("key %q: %w", name, ErrNotFound)
+}
+
+func containsKeyName(keys []config.SSHKey, name string) bool {
+	for _, k := range keys {
+		if k.Name == name {
+			return true
 		}
 	}
-	return fmt.Errorf("tunnel %q: %w", id, ErrNotFound)
+	return false
 }
 
-func requireRemote(cfg *config.Config, id string) error {
+func containsRemoteName(remotes []config.Remote, name string) bool {
+	for _, r := range remotes {
+		if r.Name == name {
+			return true
+		}
+	}
+	return false
+}
+
+func containsTunnelName(tunnels []config.Tunnel, name string) bool {
+	for _, t := range tunnels {
+		if t.Name == name {
+			return true
+		}
+	}
+	return false
+}
+
+func (r *Registry) runningTunnelNamesForRemoteLocked(cfg *config.Config, remoteName string) []string {
+	names := make([]string, 0)
+	for _, tunnel := range cfg.Tunnels {
+		if tunnel.Remote != remoteName {
+			continue
+		}
+		if state, _, _ := r.runtime.Get(tunnel.Name); state == StateRunning {
+			names = append(names, tunnel.Name)
+		}
+	}
+	return names
+}
+
+func (r *Registry) runningTunnelNamesForKeyLocked(cfg *config.Config, keyName string) []string {
+	names := make([]string, 0)
+	remoteNames := map[string]bool{}
 	for _, remote := range cfg.Remotes {
-		if remote.ID == id {
-			return nil
+		if remote.Key == keyName {
+			remoteNames[remote.Name] = true
 		}
 	}
-	return fmt.Errorf("remote %q: %w", id, ErrNotFound)
-}
-
-func requireKey(cfg *config.Config, id string) error {
-	if id == "" {
-		return nil
-	}
-	for _, key := range cfg.Keys {
-		if key.ID == id {
-			return nil
-		}
-	}
-	return fmt.Errorf("key %q: %w", id, ErrNotFound)
-}
-
-func (r *Registry) runningTunnelIDsForRemoteLocked(remoteID string) []string {
-	ids := make([]string, 0)
-	for _, tunnel := range r.cfg.Tunnels {
-		if tunnel.RemoteID != remoteID {
+	for _, tunnel := range cfg.Tunnels {
+		if !remoteNames[tunnel.Remote] {
 			continue
 		}
-		if state, _, _ := r.runtime.Get(tunnel.ID); state == StateRunning {
-			ids = append(ids, tunnel.ID)
+		if state, _, _ := r.runtime.Get(tunnel.Name); state == StateRunning {
+			names = append(names, tunnel.Name)
 		}
 	}
-	return ids
+	return names
 }
 
-func (r *Registry) runningTunnelIDsForKeyLocked(keyID string) []string {
-	ids := make([]string, 0)
-	remoteIDs := map[string]bool{}
-	for _, remote := range r.cfg.Remotes {
-		if remote.KeyID == keyID {
-			remoteIDs[remote.ID] = true
-		}
-	}
-	for _, tunnel := range r.cfg.Tunnels {
-		if !remoteIDs[tunnel.RemoteID] {
-			continue
-		}
-		if state, _, _ := r.runtime.Get(tunnel.ID); state == StateRunning {
-			ids = append(ids, tunnel.ID)
-		}
-	}
-	return ids
-}
-
-func (r *Registry) restartRunningTunnels(ids []string, reason string) error {
-	if len(ids) == 0 || r.manager == nil {
+func (r *Registry) restartRunningTunnels(names []string, reason string) error {
+	r.mu.RLock()
+	mgr := r.manager
+	r.mu.RUnlock()
+	if len(names) == 0 || mgr == nil {
 		return nil
 	}
-	for _, id := range ids {
-		if err := r.manager.Restart(context.Background(), id, reason); err != nil {
+	for _, name := range names {
+		if err := mgr.Restart(name, reason); err != nil {
 			return err
 		}
 	}
 	return nil
 }
 
-func (r *Registry) prepareKey(cfg *config.Config, existing config.SSHKey, input SSHKeyInput) (config.SSHKey, string, string, error) {
-	id := existing.ID
-	if id == "" {
-		id = strings.TrimSpace(input.ID)
-	}
-	if id == "" {
-		return config.SSHKey{}, "", "", fmt.Errorf("key id is required")
-	}
+func (r *Registry) prepareKey(existing config.SSHKey, input SSHKeyInput) (config.SSHKey, string, string, error) {
 	name := strings.TrimSpace(input.Name)
 	if name == "" {
 		name = existing.Name
 	}
-	if name == "" {
-		return config.SSHKey{}, "", "", fmt.Errorf("key %q: name is required", id)
+	if err := config.ValidateName("key", name); err != nil {
+		return config.SSHKey{}, "", "", err
 	}
 	description := input.Description
-	if input.Description == "" && existing.ID != "" {
+	if input.Description == "" && existing.Name != "" {
 		description = existing.Description
 	}
-	key := config.SSHKey{ID: id, Name: name, Description: description, File: existing.File}
+	key := config.SSHKey{Name: name, Description: description, File: existing.File}
 
 	privateKey := strings.TrimSpace(input.PrivateKey)
 	sourcePath := strings.TrimSpace(input.SourcePath)
 	if privateKey != "" && sourcePath != "" {
-		return config.SSHKey{}, "", "", fmt.Errorf("key %q: provide either private_key or source_path, not both", id)
+		return config.SSHKey{}, "", "", fmt.Errorf("key %q: provide either private_key or source_path, not both", name)
 	}
-	if existing.ID == "" && privateKey == "" {
-		return config.SSHKey{}, "", "", fmt.Errorf("key %q: private_key is required", id)
+	if existing.Name == "" && privateKey == "" {
+		return config.SSHKey{}, "", "", fmt.Errorf("key %q: private_key is required", name)
 	}
 	if privateKey == "" {
 		return key, "", "", nil
@@ -417,9 +514,9 @@ func (r *Registry) prepareKey(cfg *config.Config, existing config.SSHKey, input 
 
 	content := []byte(privateKey)
 	if _, err := ssh.ParseRawPrivateKey(content); err != nil {
-		return config.SSHKey{}, "", "", fmt.Errorf("key %q: private_key is not a valid SSH private key: %w", id, err)
+		return config.SSHKey{}, "", "", fmt.Errorf("key %q: private_key is not a valid SSH private key: %w", name, err)
 	}
-	fileName, err := pickKeyFileName(id, input.FileName, sourcePath, existing.File)
+	fileName, err := pickKeyFileName(name, input.FileName, sourcePath, existing.File)
 	if err != nil {
 		return config.SSHKey{}, "", "", err
 	}
@@ -449,7 +546,7 @@ func (r *Registry) finalizeKeyMaterial(oldFile, newFilePath string) error {
 	return nil
 }
 
-func pickKeyFileName(id, requested, sourcePath, existing string) (string, error) {
+func pickKeyFileName(name, requested, sourcePath, existing string) (string, error) {
 	candidate := strings.TrimSpace(requested)
 	if candidate == "" && sourcePath != "" {
 		candidate = filepath.Base(sourcePath)
@@ -458,14 +555,14 @@ func pickKeyFileName(id, requested, sourcePath, existing string) (string, error)
 		candidate = existing
 	}
 	if candidate == "" {
-		candidate = id
+		candidate = name
 	}
 	candidate = filepath.Base(strings.TrimSpace(candidate))
 	if candidate == "." || candidate == string(filepath.Separator) || candidate == "" {
-		return "", fmt.Errorf("key %q: invalid file name", id)
+		return "", fmt.Errorf("key %q: invalid file name", name)
 	}
 	if filepath.Clean(candidate) != candidate || candidate == ".." {
-		return "", fmt.Errorf("key %q: invalid file name", id)
+		return "", fmt.Errorf("key %q: invalid file name", name)
 	}
 	return candidate, nil
 }

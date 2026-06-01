@@ -69,6 +69,9 @@ On first run the service generates an API token and writes it to `~/.ssh-tunnel-
 
 ## CLI reference
 
+Resources are addressed by their unique `name`. `update` takes the current name
+as its argument and accepts `--name` to rename (e.g. `tunnel update old --name new`).
+
 ```text
 ssh-tunnel [command]
 
@@ -136,24 +139,38 @@ The runtime directory also stores:
 - `keys/` — uploaded or pasted private keys
 - `logs/ssh-tunnel-service.log` — service log file
 
+Every key, remote and tunnel is identified by its unique **`name`** — there is
+no separate `id`. Remotes reference a key by name (`key:`), and tunnels
+reference their remote by name (`remote:`). Renaming a remote or key cascades to
+everything that references it (and restarts affected running tunnels).
+
+> Migrating from an older config? Legacy `id` / `remote_id` / `key_id` fields are
+> read on load and rewritten to the name-keyed form automatically; blank or
+> duplicate names fall back to the old id and are de-duplicated.
+
 Example managed key + remote association:
 
 ```yaml
 keys:
-  - id: deploy-key
-    name: Deploy key
+  - name: deploy-key
     file: deploy-key
 
 remotes:
-  - id: prod
-    name: Production
+  - name: Production
     host: ssh.example.com
     port: 22
     user: ubuntu
-    key_id: deploy-key
+    key: deploy-key
 ```
 
-If a remote does **not** set `key_id`, the service keeps using the normal system SSH behaviour (agent, default identity files, and ssh config resolution).
+If a remote does **not** set `key`, the service keeps using the normal system SSH behaviour (agent, default identity files, and ssh config resolution).
+
+### Auto-start
+
+A tunnel with `auto_start: true` is **supervised**: it starts immediately when
+added or enabled, starts with the service, and is automatically reconnected
+(with exponential backoff) if the underlying `ssh` process exits unexpectedly.
+Stopping a tunnel cancels supervision until it is started again.
 
 ## Release automation
 

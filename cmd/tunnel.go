@@ -3,6 +3,7 @@ package cmd
 import (
 	"encoding/json"
 	"fmt"
+	"net/url"
 	"os"
 	"strings"
 	"text/tabwriter"
@@ -44,12 +45,12 @@ func tunnelListCmd() *cobra.Command {
 				return json.NewEncoder(os.Stdout).Encode(tunnels)
 			}
 			tw := tabwriter.NewWriter(os.Stdout, 0, 4, 2, ' ', 0)
-			fmt.Fprintln(tw, "ID\tNAME\tDIR\tREMOTE\tBIND\tTARGET\tAUTO")
+			fmt.Fprintln(tw, "NAME\tDIR\tREMOTE\tBIND\tTARGET\tAUTO\tSTATE")
 			for _, t := range tunnels {
 				bind := fmt.Sprintf("%s:%d", t.BindAddress, t.BindPort)
 				target := fmt.Sprintf("%s:%d", t.TargetHost, t.TargetPort)
-				fmt.Fprintf(tw, "%s\t%s\t%s\t%s\t%s\t%s\t%v\n",
-					t.ID, t.Name, t.Direction, t.RemoteID, bind, target, t.AutoStart)
+				fmt.Fprintf(tw, "%s\t%s\t%s\t%s\t%s\t%v\t%s\n",
+					t.Name, t.Direction, t.Remote, bind, target, t.AutoStart, t.State)
 			}
 			return tw.Flush()
 		},
@@ -60,9 +61,9 @@ func tunnelListCmd() *cobra.Command {
 
 func tunnelAddCmd() *cobra.Command {
 	var (
-		id, name, remoteID, bindAddr, targetHost, desc, dir string
-		bindPort, targetPort                                int
-		autoStart                                           bool
+		name, remote, bindAddr, targetHost, desc, dir string
+		bindPort, targetPort                          int
+		autoStart                                     bool
 	)
 	cmd := &cobra.Command{
 		Use:   "add",
@@ -73,9 +74,8 @@ func tunnelAddCmd() *cobra.Command {
 				return err
 			}
 			t := config.Tunnel{
-				ID:          id,
 				Name:        name,
-				RemoteID:    remoteID,
+				Remote:      remote,
 				Direction:   config.TunnelDirection(dir),
 				BindAddress: bindAddr,
 				BindPort:    bindPort,
@@ -87,21 +87,19 @@ func tunnelAddCmd() *cobra.Command {
 			if err := reg.AddTunnel(t); err != nil {
 				return err
 			}
-			fmt.Printf("Tunnel %q added.\n", id)
+			fmt.Printf("Tunnel %q added.\n", name)
 			return nil
 		},
 	}
-	cmd.Flags().StringVar(&id, "id", "", "unique ID (required)")
-	cmd.Flags().StringVar(&name, "name", "", "display name (required)")
-	cmd.Flags().StringVar(&remoteID, "remote", "", "remote ID (required)")
+	cmd.Flags().StringVar(&name, "name", "", "unique name (required)")
+	cmd.Flags().StringVar(&remote, "remote", "", "remote name (required)")
 	cmd.Flags().StringVar(&dir, "direction", string(config.DirectionLocal), "-L or -R")
 	cmd.Flags().StringVar(&bindAddr, "bind-addr", "127.0.0.1", "bind address")
 	cmd.Flags().IntVar(&bindPort, "bind-port", 0, "local port to bind (required)")
 	cmd.Flags().StringVar(&targetHost, "target-host", "", "target host (required)")
 	cmd.Flags().IntVar(&targetPort, "target-port", 0, "target port (required)")
-	cmd.Flags().BoolVar(&autoStart, "auto-start", false, "auto-start with service")
+	cmd.Flags().BoolVar(&autoStart, "auto-start", false, "auto-start with service and keep alive")
 	cmd.Flags().StringVar(&desc, "description", "", "description")
-	_ = cmd.MarkFlagRequired("id")
 	_ = cmd.MarkFlagRequired("name")
 	_ = cmd.MarkFlagRequired("remote")
 	_ = cmd.MarkFlagRequired("bind-port")
@@ -112,13 +110,13 @@ func tunnelAddCmd() *cobra.Command {
 
 func tunnelUpdateCmd() *cobra.Command {
 	var (
-		name, remoteID, bindAddr, targetHost, desc, dir string
-		bindPort, targetPort                            int
-		autoStart                                       bool
+		name, remote, bindAddr, targetHost, desc, dir string
+		bindPort, targetPort                          int
+		autoStart                                     bool
 	)
 	cmd := &cobra.Command{
-		Use:   "update <id>",
-		Short: "Update a tunnel definition",
+		Use:   "update <name>",
+		Short: "Update a tunnel definition (use --name to rename)",
 		Args:  cobra.ExactArgs(1),
 		RunE: func(c *cobra.Command, args []string) error {
 			reg, _, err := registryForCLI(rootFlags.Home)
@@ -133,8 +131,8 @@ func tunnelUpdateCmd() *cobra.Command {
 			if name != "" {
 				t.Name = name
 			}
-			if remoteID != "" {
-				t.RemoteID = remoteID
+			if remote != "" {
+				t.Remote = remote
 			}
 			if dir != "" {
 				t.Direction = config.TunnelDirection(dir)
@@ -164,8 +162,8 @@ func tunnelUpdateCmd() *cobra.Command {
 			return nil
 		},
 	}
-	cmd.Flags().StringVar(&name, "name", "", "display name")
-	cmd.Flags().StringVar(&remoteID, "remote", "", "remote ID")
+	cmd.Flags().StringVar(&name, "name", "", "rename the tunnel")
+	cmd.Flags().StringVar(&remote, "remote", "", "remote name")
 	cmd.Flags().StringVar(&dir, "direction", "", "-L or -R")
 	cmd.Flags().StringVar(&bindAddr, "bind-addr", "", "bind address")
 	cmd.Flags().IntVar(&bindPort, "bind-port", 0, "local bind port")
@@ -178,7 +176,7 @@ func tunnelUpdateCmd() *cobra.Command {
 
 func tunnelRmCmd() *cobra.Command {
 	return &cobra.Command{
-		Use:   "rm <id>",
+		Use:   "rm <name>",
 		Short: "Remove a tunnel definition",
 		Args:  cobra.ExactArgs(1),
 		RunE: func(_ *cobra.Command, args []string) error {
@@ -197,24 +195,24 @@ func tunnelRmCmd() *cobra.Command {
 
 func tunnelStartCmd() *cobra.Command {
 	return &cobra.Command{
-		Use:   "start <id>",
+		Use:   "start <name>",
 		Short: "Start a tunnel (requires service to be running)",
 		Args:  cobra.ExactArgs(1),
 		RunE: func(_ *cobra.Command, args []string) error {
 			// When called outside the service context we talk over HTTP.
 			// For simplicity we return a helpful message.
-			return callHTTPAction(rootFlags.Home, "POST", "/api/tunnels/"+args[0]+"/start")
+			return callHTTPAction(rootFlags.Home, "POST", "/api/tunnels/"+url.PathEscape(args[0])+"/start")
 		},
 	}
 }
 
 func tunnelStopCmd() *cobra.Command {
 	return &cobra.Command{
-		Use:   "stop <id>",
+		Use:   "stop <name>",
 		Short: "Stop a running tunnel",
 		Args:  cobra.ExactArgs(1),
 		RunE: func(_ *cobra.Command, args []string) error {
-			return callHTTPAction(rootFlags.Home, "POST", "/api/tunnels/"+args[0]+"/stop")
+			return callHTTPAction(rootFlags.Home, "POST", "/api/tunnels/"+url.PathEscape(args[0])+"/stop")
 		},
 	}
 }

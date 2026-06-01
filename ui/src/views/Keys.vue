@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, h, onMounted, ref } from 'vue'
+import { computed, h, onMounted, reactive, ref, watch } from 'vue'
 import {
   NAlert,
   NButton,
@@ -16,6 +16,8 @@ import {
 } from 'naive-ui'
 import type { DataTableColumns } from 'naive-ui'
 import { getErrorMessage, type SSHKey, type SSHKeyPayload } from '@/api/client'
+import { copyText } from '@/clipboard'
+import { validateName } from '@/validation'
 import { useKeysStore } from '@/stores/keys'
 import { useI18n } from '@/i18n'
 
@@ -24,22 +26,44 @@ const message = useMessage()
 const { t } = useI18n()
 
 const showModal = ref(false)
-const editingId = ref<string | null>(null)
-const form = ref<SSHKeyPayload>({ id: '', name: '', file_name: '', private_key: '', description: '' })
+const editingName = ref<string | null>(null)
+const submitted = ref(false)
+const errors = reactive({ name: '' })
 
-function resetForm() {
-  form.value = { id: '', name: '', file_name: '', private_key: '', description: '' }
+function emptyKey(): SSHKeyPayload {
+  return { name: '', file_name: '', private_key: '', description: '' }
+}
+const form = ref<SSHKeyPayload>(emptyKey())
+
+function runValidation(): boolean {
+  errors.name = validateName(form.value.name, t) ?? ''
+  return !errors.name
+}
+
+watch(form, () => {
+  if (submitted.value) runValidation()
+}, { deep: true })
+
+function feedback(): string {
+  return submitted.value ? errors.name : ''
+}
+function status(): 'error' | undefined {
+  return submitted.value && errors.name ? 'error' : undefined
 }
 
 function openAdd() {
-  editingId.value = null
-  resetForm()
+  editingName.value = null
+  form.value = emptyKey()
+  submitted.value = false
+  errors.name = ''
   showModal.value = true
 }
 
 function openEdit(row: SSHKey) {
-  editingId.value = row.id
+  editingName.value = row.name
   form.value = { name: row.name, file_name: row.file, private_key: '', description: row.description }
+  submitted.value = false
+  errors.name = ''
   showModal.value = true
 }
 
@@ -52,9 +76,14 @@ async function onFileChange(event: Event) {
 }
 
 async function submitForm() {
+  submitted.value = true
+  if (!runValidation()) {
+    message.error(t('validation.fixErrors'))
+    return
+  }
   try {
-    if (editingId.value) {
-      await keyStore.updateKey(editingId.value, form.value)
+    if (editingName.value) {
+      await keyStore.updateKey(editingName.value, form.value)
       message.success(t('keys.updated'))
     } else {
       await keyStore.addKey(form.value)
@@ -66,13 +95,19 @@ async function submitForm() {
   }
 }
 
-async function doDelete(id: string) {
+async function doDelete(name: string) {
   try {
-    await keyStore.deleteKey(id)
+    await keyStore.deleteKey(name)
     message.success(t('keys.deleted'))
   } catch (error: unknown) {
     message.error(getErrorMessage(error))
   }
+}
+
+async function copyName(name: string) {
+  const ok = await copyText(name)
+  if (ok) message.success(t('common.copied'))
+  else message.error(t('common.copyFailed'))
 }
 
 const columns = computed<DataTableColumns<SSHKey>>(() => [
@@ -82,11 +117,12 @@ const columns = computed<DataTableColumns<SSHKey>>(() => [
   {
     title: t('keys.columns.actions'),
     key: 'actions',
-    width: 150,
+    width: 200,
     render: (row) => h(NSpace, { size: 'small' }, {
       default: () => [
         h(NButton, { size: 'tiny', secondary: true, onClick: () => openEdit(row) }, { default: () => t('common.edit') }),
-        h(NPopconfirm, { onPositiveClick: () => doDelete(row.id) }, {
+        h(NButton, { size: 'tiny', tertiary: true, onClick: () => { void copyName(row.name) } }, { default: () => t('common.copyName') }),
+        h(NPopconfirm, { onPositiveClick: () => doDelete(row.name) }, {
           trigger: () => h(NButton, { size: 'tiny', type: 'error', ghost: true }, { default: () => t('common.delete') }),
           default: () => t('keys.deleteConfirm'),
         }),
@@ -116,18 +152,15 @@ onMounted(() => {
           :loading="keyStore.loading"
           :bordered="false"
           size="small"
-          :row-key="(row: SSHKey) => row.id"
+          :row-key="(row: SSHKey) => row.name"
         />
       </n-card>
     </div>
 
-    <n-modal v-model:show="showModal" :title="editingId ? t('keys.editTitle') : t('keys.addTitle')" preset="dialog" style="width:620px">
+    <n-modal v-model:show="showModal" :title="editingName ? t('keys.editTitle') : t('keys.addTitle')" preset="dialog" style="width:620px">
       <n-form label-placement="left" label-width="110" style="margin-top:8px">
-        <n-form-item v-if="!editingId" :label="t('keys.fields.id')">
-          <n-input v-model:value="form.id" placeholder="e.g. deploy-key" />
-        </n-form-item>
-        <n-form-item :label="t('keys.fields.name')">
-          <n-input v-model:value="form.name" :placeholder="t('keys.fields.name')" />
+        <n-form-item :label="t('keys.fields.name')" :validation-status="status()" :feedback="feedback()">
+          <n-input v-model:value="form.name" placeholder="e.g. deploy-key" />
         </n-form-item>
         <n-form-item :label="t('keys.fields.fileName')">
           <n-input v-model:value="form.file_name" placeholder="id_ed25519" />
@@ -138,7 +171,7 @@ onMounted(() => {
         <n-form-item :label="t('keys.fields.upload')">
           <div class="upload-box">
             <input type="file" @change="onFileChange" />
-            <n-text depth="3">{{ t(editingId ? 'keys.replaceHint' : 'keys.uploadHint') }}</n-text>
+            <n-text depth="3">{{ t(editingName ? 'keys.replaceHint' : 'keys.uploadHint') }}</n-text>
           </div>
         </n-form-item>
         <n-form-item :label="t('keys.fields.description')">
@@ -148,7 +181,7 @@ onMounted(() => {
       <template #action>
         <n-space justify="end">
           <n-button @click="showModal = false">{{ t('common.cancel') }}</n-button>
-          <n-button type="primary" @click="submitForm">{{ editingId ? t('common.save') : t('common.add') }}</n-button>
+          <n-button type="primary" @click="submitForm">{{ editingName ? t('common.save') : t('common.add') }}</n-button>
         </n-space>
       </template>
     </n-modal>

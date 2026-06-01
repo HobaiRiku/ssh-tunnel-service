@@ -29,13 +29,13 @@ func TestWriteExampleProducesValidConfig(t *testing.T) {
 		t.Fatal("expected example to define at least one key")
 	}
 
-	remoteIDs := map[string]bool{}
+	remoteNames := map[string]bool{}
 	for _, r := range cfg.Remotes {
-		remoteIDs[r.ID] = true
+		remoteNames[r.Name] = true
 	}
 	for _, tn := range cfg.Tunnels {
-		if !remoteIDs[tn.RemoteID] {
-			t.Fatalf("tunnel %q references unknown remote %q", tn.ID, tn.RemoteID)
+		if !remoteNames[tn.Remote] {
+			t.Fatalf("tunnel %q references unknown remote %q", tn.Name, tn.Remote)
 		}
 	}
 }

@@ -49,11 +49,13 @@ When adding cross-cutting state, plug it in there rather than reaching into subp
 
 Both the HTTP API (`internal/api/router.go`) and CLI subcommands in `cmd/` must call through `services.Registry` / `services.Manager`. The registry holds the config under a `sync.RWMutex`, clones it on every write, validates, then persists atomically via `config.Write` — never edit `config.yaml` from anywhere else, or CLI and Web UI will drift.
 
-- `Registry` — CRUD over remotes/tunnels, owns persistence
-- `Runtime` — in-memory `tunnelID → {state, pid, error}` map, the only source of truth for live state
-- `Manager` — owns `ssh` child processes; on `Start` it builds args, on `Wait` it translates stderr into a human diagnostic via `diagnoseSSHFailure` and writes the result back into `Runtime`
+Every key, remote and tunnel is keyed by its unique `name` (there is no `id`). Remotes reference a key via `Remote.Key` (a key name); tunnels reference their remote via `Tunnel.Remote` (a remote name). `config.ValidateName` enforces the name rules and `internal/config/migrate.go` rewrites legacy `id`/`remote_id`/`key_id` configs to the name-keyed form on load.
 
-`TunnelStatus` (returned to API/CLI) is always `config.Tunnel ⊕ Runtime.Get(id)` — read it from `Registry.ListTunnels` / `GetTunnel`, never compose it ad-hoc.
+- `Registry` — CRUD over remotes/tunnels, owns persistence; renaming a remote/key cascades to referencing resources
+- `Runtime` — in-memory `tunnelName → {state, pid, error}` map, the only source of truth for live state
+- `Manager` — owns `ssh` child processes (keyed by tunnel name); on `Start` it builds args, on `Wait` it translates stderr into a human diagnostic via `diagnoseSSHFailure` and writes the result back into `Runtime`. `auto_start` tunnels are supervised: `Manager` reconnects them with backoff on unexpected exits until they are stopped (`Stop`) or removed (`Forget`).
+
+`TunnelStatus` (returned to API/CLI) is always `config.Tunnel ⊕ Runtime.Get(name)` — read it from `Registry.ListTunnels` / `GetTunnel`, never compose it ad-hoc.
 
 ### SSH is invoked non-interactively, on purpose
 
@@ -87,4 +89,5 @@ Uses `kardianos/service` for launchd / systemd / SCM. On macOS the service runs 
 - Adding a config field: extend `internal/config/schema.go`, update `internal/config/validate.go`, `example.go`, and ensure `config.LoadWithDefaults` fills a sensible default — `Registry.persist` will reject anything that fails `Validate`.
 - Adding an API endpoint: register in `internal/api/router.go` inside the `api.Group("/api")` block so `tokenAuth` applies. Only `/api/health` and `/api/bootstrap` are unauthenticated.
 - Adding a tunnel field that affects the spawned `ssh` command: thread it through `Manager.Start` arg construction; mirror it into CLI flags in `cmd/tunnel.go` and into the SPA's `Tunnel` type in `ui/src/api/client.ts`.
-- Removing/renaming a remote that's referenced by a tunnel is rejected by `Registry.DeleteRemote`; do not loosen that check.
+- *Deleting* a remote referenced by a tunnel is rejected by `Registry.DeleteRemote`; do not loosen that check. *Renaming* a remote/key is allowed and cascades to referencing resources (`Tunnel.Remote` / `Remote.Key`) — keep the cascade and the duplicate-name guard intact.
+- Resources are addressed by `name` in API paths (`/api/tunnels/:name`, URL-encoded by the SPA), CLI args, and references. Forms validate names client-side via `ui/src/validation.ts` mirroring `config.ValidateName`.

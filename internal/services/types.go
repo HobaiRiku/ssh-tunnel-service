@@ -36,8 +36,8 @@ type TunnelCommandPreview struct {
 }
 
 // SSHKeyInput is the payload used to create or update a managed SSH key.
+// Keys are identified by Name; there is no separate id.
 type SSHKeyInput struct {
-	ID          string `json:"id,omitempty"`
 	Name        string `json:"name"`
 	Description string `json:"description,omitempty"`
 	FileName    string `json:"file_name,omitempty"`

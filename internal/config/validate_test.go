@@ -55,7 +55,7 @@ func TestValidateRejectsMissingKnownHostsPath(t *testing.T) {
 func TestValidateRejectsUnknownRemoteKey(t *testing.T) {
 	cfg := &Config{
 		App:     AppConfig{SSHHostKeyPolicy: SSHHostKeyPolicyInsecure},
-		Remotes: []Remote{{ID: "remote-a", Name: "A", Host: "host", Port: 22, User: "user", KeyID: "missing"}},
+		Remotes: []Remote{{Name: "remote-a", Host: "host", Port: 22, User: "user", Key: "missing"}},
 	}
 
 	if err := Validate(cfg); err == nil {
