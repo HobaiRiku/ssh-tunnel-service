@@ -59,3 +59,30 @@ func TestDeleteRemoteRejectedWhenReferenced(t *testing.T) {
 		t.Fatal("expected delete of referenced remote to be rejected")
 	}
 }
+
+func TestAddKeyRejectsWhitespaceName(t *testing.T) {
+	reg := newTestRegistry(t)
+	if err := reg.AddKey(SSHKeyInput{Name: " bad ", PrivateKey: "x"}); err == nil {
+		t.Fatal("expected key name with surrounding whitespace to be rejected")
+	}
+}
+
+func TestUpdateKeyRenameCascadesToRemotes(t *testing.T) {
+	cfg := &config.Config{
+		App:     config.AppConfig{SSHHostKeyPolicy: config.SSHHostKeyPolicyInsecure},
+		Keys:    []config.SSHKey{{Name: "k1", File: "k1"}},
+		Remotes: []config.Remote{{Name: "r1", Host: "h", Port: 22, User: "u", Key: "k1"}},
+	}
+	reg := New(cfg, paths.Paths{Home: t.TempDir()}, NewRuntime())
+	// Rename only (no new key material) should keep the stored file and cascade.
+	if err := reg.UpdateKey("k1", SSHKeyInput{Name: "k2"}); err != nil {
+		t.Fatalf("UpdateKey rename: %v", err)
+	}
+	remote, err := reg.GetRemote("r1")
+	if err != nil {
+		t.Fatalf("GetRemote: %v", err)
+	}
+	if remote.Key != "k2" {
+		t.Fatalf("remote key reference = %q, want cascaded rename %q", remote.Key, "k2")
+	}
+}

@@ -57,5 +57,8 @@ export function parseEndpoint(value: string): Endpoint | null {
 export function formatEndpoint(host: string, port: number): string {
   if (!host && !port) return ''
   const h = host.includes(':') && !host.startsWith('[') ? `[${host}]` : host
-  return `${h}:${port || ''}`
+  // No port yet (e.g. a freshly reset form): show just the host so the field
+  // isn't pre-filled with a syntactically invalid "host:" value.
+  if (!port) return h
+  return `${h}:${port}`
 }
