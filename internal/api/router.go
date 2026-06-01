@@ -126,7 +126,13 @@ func updateKey(reg *services.Registry) gin.HandlerFunc {
 			c.JSON(http.StatusBadRequest, apiError(err))
 			return
 		}
-		key, err := reg.GetKey(c.Param("name"))
+		// A rename moves the key to input.Name; fetch by the new name so the
+		// response reflects the update instead of 404-ing on the old path param.
+		lookup := c.Param("name")
+		if input.Name != "" {
+			lookup = input.Name
+		}
+		key, err := reg.GetKey(lookup)
 		if err != nil {
 			c.JSON(http.StatusBadRequest, apiError(err))
 			return

@@ -487,7 +487,10 @@ func (r *Registry) restartRunningTunnels(names []string, reason string) error {
 }
 
 func (r *Registry) prepareKey(existing config.SSHKey, input SSHKeyInput) (config.SSHKey, string, string, error) {
-	name := strings.TrimSpace(input.Name)
+	// Validate the raw name (no trimming) so leading/trailing whitespace is
+	// rejected, consistent with remotes/tunnels and the UI rules. Fall back to
+	// the existing name only when no new name was supplied.
+	name := input.Name
 	if name == "" {
 		name = existing.Name
 	}

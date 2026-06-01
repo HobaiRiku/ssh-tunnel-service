@@ -45,7 +45,7 @@ const keyOptions = computed(() => [
 
 function runValidation(): boolean {
   errors.name = validateName(form.value.name, t) ?? ''
-  errors.host = form.value.host ? '' : t('remotes.fields.host')
+  errors.host = form.value.host ? '' : t('validation.hostRequired')
   return !errors.name && !errors.host
 }
 
