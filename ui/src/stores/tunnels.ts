@@ -77,9 +77,14 @@ export const useTunnelsStore = defineStore('tunnels', () => {
     await fetchTunnels()
   }
 
+  async function restartTunnel(name: string) {
+    await api.restartTunnel(name)
+    await fetchTunnels()
+  }
+
   return {
     tunnels, loading, error,
-    fetchTunnels, addTunnel, updateTunnel, deleteTunnel, startTunnel, stopTunnel,
+    fetchTunnels, addTunnel, updateTunnel, deleteTunnel, startTunnel, stopTunnel, restartTunnel,
     startAutoRefresh, stopAutoRefresh,
   }
 })

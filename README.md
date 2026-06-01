@@ -103,6 +103,7 @@ Commands:
     rm        Remove a tunnel
     start     Start a tunnel via the running service
     stop      Stop a running tunnel
+    restart   Restart a tunnel via the running service
 
   config      Manage configuration
   version     Print version information

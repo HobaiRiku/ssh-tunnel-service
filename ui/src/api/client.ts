@@ -129,6 +129,7 @@ export const api = {
   getTunnelCommand: (name: string) => req<TunnelCommandPreview>('GET', `/tunnels/${seg(name)}/command`),
   startTunnel: (name: string) => req<void>('POST', `/tunnels/${seg(name)}/start`),
   stopTunnel: (name: string) => req<void>('POST', `/tunnels/${seg(name)}/stop`),
+  restartTunnel: (name: string) => req<void>('POST', `/tunnels/${seg(name)}/restart`),
 
   health: () => req<{ ok: boolean }>('GET', '/health'),
 }

@@ -72,6 +72,7 @@ func NewRouter(opts Options) *gin.Engine {
 	tunnels.DELETE("/:name", deleteTunnel(opts.Registry))
 	tunnels.POST("/:name/start", startTunnel(opts.Manager))
 	tunnels.POST("/:name/stop", stopTunnel(opts.Manager))
+	tunnels.POST("/:name/restart", restartTunnel(opts.Manager))
 
 	return r
 }
@@ -313,6 +314,16 @@ func stopTunnel(mgr *services.Manager) gin.HandlerFunc {
 			return
 		}
 		c.JSON(http.StatusOK, gin.H{"status": "stopped"})
+	}
+}
+
+func restartTunnel(mgr *services.Manager) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		if err := mgr.Restart(c.Param("name"), "api request"); err != nil {
+			c.JSON(http.StatusBadRequest, apiError(err))
+			return
+		}
+		c.JSON(http.StatusOK, gin.H{"status": "restarted"})
 	}
 }
 
