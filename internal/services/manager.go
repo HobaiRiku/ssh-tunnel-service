@@ -100,6 +100,13 @@ func (m *Manager) Start(name string) error {
 	}
 	m.cancelTimerLocked(name)
 	cmd := exec.CommandContext(m.baseCtx, "ssh", args...)
+	// On baseCtx cancellation (service shutdown) ask ssh to exit cleanly rather
+	// than the default SIGKILL, so it releases any -R remote-forward listener on
+	// the server before going away; WaitDelay then escalates to SIGKILL if it
+	// overstays. This keeps shutdown from orphaning ssh processes that hold a
+	// forwarded port and block the next start.
+	cmd.Cancel = func() error { return signalTerminate(cmd.Process) }
+	cmd.WaitDelay = stopGracePeriod
 	var stderr bytes.Buffer
 	cmd.Stderr = &stderr
 	if err := cmd.Start(); err != nil {
@@ -304,6 +311,41 @@ func (m *Manager) AutoStart() {
 			}
 		}
 	}
+}
+
+// Shutdown stops supervising every tunnel and gracefully terminates all running
+// ssh processes, blocking until they have exited. The service calls this on
+// shutdown so no orphaned ssh process survives holding a forwarded port — which
+// would otherwise make the next start fail (notably for -R remote forwards,
+// whose server-side listener lingers until the ssh connection is gone).
+func (m *Manager) Shutdown() {
+	m.mu.Lock()
+	for name := range m.desired {
+		m.desired[name] = false
+	}
+	for name := range m.timers {
+		m.cancelTimerLocked(name)
+	}
+	running := make(map[string]*managedProc, len(m.procs))
+	for name, mp := range m.procs {
+		running[name] = mp
+	}
+	m.mu.Unlock()
+
+	var wg sync.WaitGroup
+	for name, mp := range running {
+		if mp.cmd.Process == nil {
+			continue
+		}
+		wg.Add(1)
+		go func(name string, mp *managedProc) {
+			defer wg.Done()
+			m.terminate(name, mp)
+			m.rt.SetStopped(name)
+		}(name, mp)
+	}
+	wg.Wait()
+	m.logger.Info("all tunnels stopped for shutdown")
 }
 
 func (m *Manager) lookupTunnel(name string) (TunnelStatus, config.Remote, *config.SSHKey, config.AppConfig, error) {

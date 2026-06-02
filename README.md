@@ -24,6 +24,19 @@ brew tap HobaiRiku/tap
 brew install ssh-tunnel-service
 ```
 
+> **Upgrading:** `brew upgrade ssh-tunnel-service` only replaces the binary on
+> disk — an already-installed service keeps running the **old** executable until
+> it is restarted. After upgrading, restart it so the new binary takes effect:
+>
+> ```bash
+> ssh-tunnel stop
+> ssh-tunnel start
+> ```
+>
+> `stop` shuts the running tunnels down gracefully (each `ssh` child is asked to
+> exit and release its forwarded port) before the process exits, so the restart
+> starts from a clean slate.
+
 ### Linux / macOS binaries
 
 1. Open the [Releases](https://github.com/HobaiRiku/ssh-tunnel-service/releases) page.
@@ -72,6 +85,13 @@ On first run the service generates an API token and writes it to `~/.ssh-tunnel-
 Resources are addressed by their unique `name`. `update` takes the current name
 as its argument and accepts `--name` to rename (e.g. `tunnel update old --name new`).
 
+The `remote`, `key`, and `tunnel` subcommands operate against the **running
+service** over its local API (so the CLI and Web UI always agree on live state
+and never edit `config.yaml` behind the service's back). If the service is not
+running they exit with a hint to start it first (`ssh-tunnel start`, or
+`ssh-tunnel run` in the foreground). Service-control commands (`install`,
+`start`, `stop`, `status`, `tail`, `config`) work without it.
+
 ```text
 ssh-tunnel [command]
 
@@ -97,7 +117,7 @@ Commands:
     rm        Remove a key
 
   tunnel      Manage SSH tunnel definitions
-    list      List tunnels and live state
+    list      List tunnels and live state (state + pid from the running service)
     add       Add a tunnel
     update    Update a tunnel field (running tunnels are restarted automatically)
     rm        Remove a tunnel

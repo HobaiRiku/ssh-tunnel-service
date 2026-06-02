@@ -3,6 +3,8 @@ package cmd
 import (
 	"encoding/json"
 	"fmt"
+	"net/http"
+	"net/url"
 	"os"
 	"strconv"
 	"text/tabwriter"
@@ -10,8 +12,6 @@ import (
 	"github.com/spf13/cobra"
 
 	"ssh-tunnel-service/internal/config"
-	"ssh-tunnel-service/internal/paths"
-	"ssh-tunnel-service/internal/services"
 )
 
 func remoteCmd() *cobra.Command {
@@ -29,11 +29,14 @@ func remoteListCmd() *cobra.Command {
 		Use:   "list",
 		Short: "List remotes",
 		RunE: func(_ *cobra.Command, _ []string) error {
-			reg, _, err := registryForCLI(rootFlags.Home)
+			client, err := newAPIClient(rootFlags.Home)
 			if err != nil {
 				return err
 			}
-			remotes := reg.ListRemotes()
+			var remotes []config.Remote
+			if err := client.request(http.MethodGet, "/api/remotes", nil, &remotes); err != nil {
+				return err
+			}
 			if jsonOut {
 				return json.NewEncoder(os.Stdout).Encode(remotes)
 			}
@@ -58,12 +61,12 @@ func remoteAddCmd() *cobra.Command {
 		Use:   "add",
 		Short: "Add a remote",
 		RunE: func(_ *cobra.Command, _ []string) error {
-			reg, _, err := registryForCLI(rootFlags.Home)
+			client, err := newAPIClient(rootFlags.Home)
 			if err != nil {
 				return err
 			}
 			r := config.Remote{Name: name, Host: host, Port: port, User: user, Key: key, Description: desc}
-			if err := reg.AddRemote(r); err != nil {
+			if err := client.request(http.MethodPost, "/api/remotes", r, nil); err != nil {
 				return err
 			}
 			fmt.Printf("Remote %q added.\n", name)
@@ -90,15 +93,14 @@ func remoteUpdateCmd() *cobra.Command {
 		Short: "Update a remote (use --name to rename)",
 		Args:  cobra.ExactArgs(1),
 		RunE: func(c *cobra.Command, args []string) error {
-			reg, _, err := registryForCLI(rootFlags.Home)
+			client, err := newAPIClient(rootFlags.Home)
 			if err != nil {
 				return err
 			}
-			current, err2 := reg.GetRemote(args[0])
-			if err2 != nil {
-				return err2
+			var r config.Remote
+			if err := client.request(http.MethodGet, "/api/remotes/"+url.PathEscape(args[0]), nil, &r); err != nil {
+				return err
 			}
-			r := current
 			if name != "" {
 				r.Name = name
 			}
@@ -121,7 +123,7 @@ func remoteUpdateCmd() *cobra.Command {
 			if desc != "" {
 				r.Description = desc
 			}
-			if err := reg.UpdateRemote(args[0], r); err != nil {
+			if err := client.request(http.MethodPut, "/api/remotes/"+url.PathEscape(args[0]), r, nil); err != nil {
 				return err
 			}
 			fmt.Printf("Remote %q updated.\n", args[0])
@@ -143,25 +145,15 @@ func remoteRmCmd() *cobra.Command {
 		Short: "Remove a remote",
 		Args:  cobra.ExactArgs(1),
 		RunE: func(_ *cobra.Command, args []string) error {
-			reg, _, err := registryForCLI(rootFlags.Home)
+			client, err := newAPIClient(rootFlags.Home)
 			if err != nil {
 				return err
 			}
-			if err := reg.DeleteRemote(args[0]); err != nil {
+			if err := client.request(http.MethodDelete, "/api/remotes/"+url.PathEscape(args[0]), nil, nil); err != nil {
 				return err
 			}
 			fmt.Printf("Remote %q removed.\n", args[0])
 			return nil
 		},
 	}
-}
-
-// registryForCLI loads config and builds a Registry for CLI commands that read/write config.
-func registryForCLI(home string) (*services.Registry, paths.Paths, error) {
-	cfg, p, err := loadConfigForCLI(home)
-	if err != nil {
-		return nil, p, err
-	}
-	rt := services.NewRuntime()
-	return services.New(cfg, p, rt), p, nil
 }

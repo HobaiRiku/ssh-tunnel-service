@@ -71,7 +71,9 @@ The API token lives in its own file (`<home>/token`), separate from `config.yaml
 
 ### CLI
 
-Cobra tree in `cmd/`. CLI subcommands call into `services.*` directly for offline operations (e.g. `remote add`, `tunnel add`) and use the HTTP API (`cmd/http.go`) for live actions (`tunnel start/stop`, `status`) by reading the same token file. Keep the JSON output formats for `remote list` / `tunnel list` stable — the README documents them as the "AI-ready CLI" contract.
+Cobra tree in `cmd/`. All resource subcommands (`remote`/`key`/`tunnel`, list **and** mutations) go through the running service's REST API via the `apiClient` in `cmd/http.go`, which reads the listen address + token from the home dir. This keeps the CLI from editing `config.yaml` behind a live service (which would drift from its in-memory state and be overwritten on the next persist) and means `tunnel list` shows the service's live `state`/`pid`. When the service isn't running, `apiClient.request` returns a "no service is running … start it with `ssh-tunnel start`" error. Only the service-control commands (`install`/`start`/`stop`/`status`/`tail`) and the `config` file commands work without a running service. Keep the JSON output formats for `remote list` / `key list` / `tunnel list` stable — the README documents them as the "AI-ready CLI" contract.
+
+The service tears tunnels down cleanly on shutdown: `Manager.Shutdown` (called from `app.Run` once the HTTP server stops) marks every tunnel undesired, cancels reconnect timers, and gracefully `terminate`s each `ssh` child, blocking until they exit. `Manager.Start` also sets `cmd.Cancel` (SIGTERM) + `cmd.WaitDelay` so a cancelled `baseCtx` still releases forwarded ports instead of orphaning processes.
 
 ### Service install (`internal/service`)
 
