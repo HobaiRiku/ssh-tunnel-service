@@ -171,11 +171,16 @@ func TestStopTerminatesGracefullyAndWaitsForExit(t *testing.T) {
 	// otherwise Stop could race in before the trap exists and SIGTERM would just
 	// kill it by default — masking whether termination was graceful.
 	deadline := time.Now().Add(3 * time.Second)
+	ready := false
 	for time.Now().Before(deadline) {
 		if data, err := os.ReadFile(marker); err == nil && strings.Contains(string(data), "ready") {
+			ready = true
 			break
 		}
 		time.Sleep(10 * time.Millisecond)
+	}
+	if !ready {
+		t.Fatalf("fake ssh never became ready; marker did not contain %q", "ready")
 	}
 
 	if err := mgr.Stop("tunnel-a"); err != nil {
