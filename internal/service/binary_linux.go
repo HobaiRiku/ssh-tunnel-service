@@ -13,23 +13,28 @@ const systemBinPath = "/usr/local/bin/ssh-tunnel-service"
 
 // installSystemBinary copies the current executable to /usr/local/bin/ssh-tunnel-service
 // and returns the destination path. If the current executable is already at the
-// destination, it is a no-op.
+// destination (resolving symlinks on both sides), it is a no-op.
 func installSystemBinary() (string, error) {
 	exe, err := os.Executable()
 	if err != nil {
 		return "", fmt.Errorf("resolve current executable: %w", err)
 	}
+	// Resolve symlinks for the source.
 	if real, err := filepath.EvalSymlinks(exe); err == nil {
 		exe = real
 	}
+	// Resolve symlinks for the destination (may not exist yet — ignore error).
 	dest := systemBinPath
+	if real, err := filepath.EvalSymlinks(dest); err == nil {
+		dest = real
+	}
 	if filepath.Clean(exe) == filepath.Clean(dest) {
-		return dest, nil
+		return systemBinPath, nil
 	}
-	if err := copyExecutable(exe, dest); err != nil {
-		return "", fmt.Errorf("install binary to %s: %w", dest, err)
+	if err := copyExecutable(exe, systemBinPath); err != nil {
+		return "", fmt.Errorf("install binary to %s: %w", systemBinPath, err)
 	}
-	return dest, nil
+	return systemBinPath, nil
 }
 
 // removeSystemBinary removes the installed binary if it exists.

@@ -107,6 +107,10 @@ func Install(home string) error {
 	}
 	darwinBootout()
 	if err := svc.Install(); err != nil {
+		// Roll back the binary copy so the system is left clean for a retry.
+		if installedExe != "" {
+			_ = removeSystemBinary()
+		}
 		return err
 	}
 	if installedExe != "" {
