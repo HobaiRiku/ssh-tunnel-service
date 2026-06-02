@@ -42,6 +42,10 @@ func NewProgram(home string) *Program {
 }
 
 func New(home string) (kservice.Service, *Program, error) {
+	return newWithExe(home, "")
+}
+
+func newWithExe(home, exe string) (kservice.Service, *Program, error) {
 	p, resolved, err := newProgram(home)
 	if err != nil {
 		return nil, nil, err
@@ -53,6 +57,7 @@ func New(home string) (kservice.Service, *Program, error) {
 		WorkingDirectory: resolved.Home,
 		EnvVars:          map[string]string{"SSH_TUNNEL_HOME": resolved.Home},
 		Option:           kservice.KeyValue{},
+		Executable:       exe,
 	}
 	if runtime.GOOS == "darwin" {
 		cfg.Option["UserService"] = true
@@ -85,11 +90,18 @@ func RunService(home string) error {
 }
 
 // Install registers the service with the OS service manager.
+// On Linux it also copies the binary to /usr/local/bin/ssh-tunnel-service so
+// the systemd unit references a stable, system-wide path instead of the caller's
+// working copy.
 func Install(home string) error {
 	if err := validateInstallExecutable(); err != nil {
 		return err
 	}
-	svc, _, err := New(home)
+	installedExe, err := installSystemBinary()
+	if err != nil {
+		return fmt.Errorf("install binary: %w", err)
+	}
+	svc, _, err := newWithExe(home, installedExe)
 	if err != nil {
 		return err
 	}
@@ -97,17 +109,23 @@ func Install(home string) error {
 	if err := svc.Install(); err != nil {
 		return err
 	}
+	if installedExe != "" {
+		fmt.Fprintf(os.Stderr, "ssh-tunnel: binary installed to %s\n", installedExe)
+	}
 	return darwinBootstrap()
 }
 
-// Uninstall removes the service registration.
+// Uninstall removes the service registration and the installed system binary (Linux).
 func Uninstall(home string) error {
 	svc, _, err := New(home)
 	if err != nil {
 		return err
 	}
 	darwinBootout()
-	return svc.Uninstall()
+	if err := svc.Uninstall(); err != nil {
+		return err
+	}
+	return removeSystemBinary()
 }
 
 // Start requests the OS to start the registered service.

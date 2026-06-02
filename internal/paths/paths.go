@@ -4,11 +4,10 @@
 // Resolution order (first hit wins):
 //  1. explicit override (--home flag on the root cobra command)
 //  2. SSH_TUNNEL_HOME environment variable
-//  3. $HOME/.ssh-tunnel-service
+//  3. platform default (Linux: /etc/ssh-tunnel-service; others: $HOME/.ssh-tunnel-service)
 package paths
 
 import (
-	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -56,11 +55,7 @@ func pickHome(override string) (string, error) {
 	if env := os.Getenv(envHome); env != "" {
 		return env, nil
 	}
-	h, err := os.UserHomeDir()
-	if err != nil || h == "" {
-		return "", errors.New("cannot determine user home; set SSH_TUNNEL_HOME or pass --home")
-	}
-	return filepath.Join(h, defaultDirName), nil
+	return platformDefaultHome()
 }
 
 // EnsureTree creates Home, data/, logs/, keys/ with mode 0700, idempotent.
