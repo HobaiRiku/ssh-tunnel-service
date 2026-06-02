@@ -68,7 +68,12 @@ func Run(ctx context.Context, opts Options) error {
 	}()
 
 	opts.Logger.Info("management api listening", "addr", opts.Config.App.HTTPListen)
-	if err := srv.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
+	err := srv.ListenAndServe()
+	// The HTTP server has stopped (ctx cancelled or a fatal listen error). Tear
+	// down every ssh child before returning so a subsequent service start is not
+	// blocked by an orphaned process still holding a forwarded port.
+	mgr.Shutdown()
+	if err != nil && !errors.Is(err, http.ErrServerClosed) {
 		return fmt.Errorf("http server: %w", err)
 	}
 	return nil

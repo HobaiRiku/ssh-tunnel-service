@@ -3,11 +3,14 @@ package cmd
 import (
 	"encoding/json"
 	"fmt"
+	"net/http"
+	"net/url"
 	"os"
 	"text/tabwriter"
 
 	"github.com/spf13/cobra"
 
+	"ssh-tunnel-service/internal/config"
 	"ssh-tunnel-service/internal/services"
 )
 
@@ -26,11 +29,14 @@ func keyListCmd() *cobra.Command {
 		Use:   "list",
 		Short: "List managed SSH keys",
 		RunE: func(_ *cobra.Command, _ []string) error {
-			reg, _, err := registryForCLI(rootFlags.Home)
+			client, err := newAPIClient(rootFlags.Home)
 			if err != nil {
 				return err
 			}
-			keys := reg.ListKeys()
+			var keys []config.SSHKey
+			if err := client.request(http.MethodGet, "/api/keys", nil, &keys); err != nil {
+				return err
+			}
 			if jsonOut {
 				return json.NewEncoder(os.Stdout).Encode(keys)
 			}
@@ -52,14 +58,14 @@ func keyAddCmd() *cobra.Command {
 		Use:   "add",
 		Short: "Add a managed SSH key",
 		RunE: func(_ *cobra.Command, _ []string) error {
-			reg, _, err := registryForCLI(rootFlags.Home)
+			client, err := newAPIClient(rootFlags.Home)
 			if err != nil {
 				return err
 			}
 			if err := loadKeyMaterial(&input); err != nil {
 				return err
 			}
-			if err := reg.AddKey(input); err != nil {
+			if err := client.request(http.MethodPost, "/api/keys", input, nil); err != nil {
 				return err
 			}
 			fmt.Printf("Key %q added.\n", input.Name)
@@ -82,14 +88,14 @@ func keyUpdateCmd() *cobra.Command {
 		Short: "Update a managed SSH key (use --name to rename)",
 		Args:  cobra.ExactArgs(1),
 		RunE: func(_ *cobra.Command, args []string) error {
-			reg, _, err := registryForCLI(rootFlags.Home)
+			client, err := newAPIClient(rootFlags.Home)
 			if err != nil {
 				return err
 			}
 			if err := loadKeyMaterial(&input); err != nil {
 				return err
 			}
-			if err := reg.UpdateKey(args[0], input); err != nil {
+			if err := client.request(http.MethodPut, "/api/keys/"+url.PathEscape(args[0]), input, nil); err != nil {
 				return err
 			}
 			fmt.Printf("Key %q updated.\n", args[0])
@@ -110,11 +116,11 @@ func keyRmCmd() *cobra.Command {
 		Short: "Remove a managed SSH key",
 		Args:  cobra.ExactArgs(1),
 		RunE: func(_ *cobra.Command, args []string) error {
-			reg, _, err := registryForCLI(rootFlags.Home)
+			client, err := newAPIClient(rootFlags.Home)
 			if err != nil {
 				return err
 			}
-			if err := reg.DeleteKey(args[0]); err != nil {
+			if err := client.request(http.MethodDelete, "/api/keys/"+url.PathEscape(args[0]), nil, nil); err != nil {
 				return err
 			}
 			fmt.Printf("Key %q removed.\n", args[0])

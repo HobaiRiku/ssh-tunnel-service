@@ -212,6 +212,71 @@ func TestStopTerminatesGracefullyAndWaitsForExit(t *testing.T) {
 	}
 }
 
+func TestShutdownTerminatesRunningTunnels(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("fake ssh shell script is POSIX-only")
+	}
+
+	home := t.TempDir()
+	marker := filepath.Join(home, "marker")
+
+	binDir := t.TempDir()
+	fakeSSH := filepath.Join(binDir, "ssh")
+	// Record a clean SIGTERM so we can assert Shutdown tears tunnels down
+	// gracefully rather than orphaning them or hard-killing.
+	script := "#!/bin/sh\n" +
+		"trap 'echo term >> \"" + marker + "\"; exit 0' TERM\n" +
+		"echo ready >> \"" + marker + "\"\n" +
+		"while true; do sleep 0.05; done\n"
+	if err := os.WriteFile(fakeSSH, []byte(script), 0o755); err != nil {
+		t.Fatalf("write fake ssh: %v", err)
+	}
+	t.Setenv("PATH", binDir+string(os.PathListSeparator)+os.Getenv("PATH"))
+
+	cfg := &config.Config{
+		App:     config.AppConfig{SSHHostKeyPolicy: config.SSHHostKeyPolicyInsecure},
+		Remotes: []config.Remote{{Name: "remote-a", Host: "ssh.example.com", Port: 22, User: "ubuntu"}},
+		Tunnels: []config.Tunnel{{Name: "tunnel-a", Remote: "remote-a", Direction: config.DirectionRemote, BindAddress: "127.0.0.1", BindPort: 9100, TargetHost: "127.0.0.1", TargetPort: 8080, AutoStart: true}},
+	}
+
+	rt := NewRuntime()
+	reg := New(cfg, paths.Paths{Home: home}, rt)
+	mgr := NewManager(context.Background(), reg, rt, slog.New(slog.NewTextHandler(io.Discard, nil)))
+	reg.SetManager(mgr)
+
+	if err := mgr.Start("tunnel-a"); err != nil {
+		t.Fatalf("Start returned error: %v", err)
+	}
+	deadline := time.Now().Add(3 * time.Second)
+	ready := false
+	for time.Now().Before(deadline) {
+		if data, err := os.ReadFile(marker); err == nil && strings.Contains(string(data), "ready") {
+			ready = true
+			break
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	if !ready {
+		t.Fatalf("fake ssh never became ready")
+	}
+
+	mgr.Shutdown()
+
+	if mgr.IsRunning("tunnel-a") {
+		t.Fatalf("expected no running process after Shutdown returns")
+	}
+	if state, _, _ := rt.Get("tunnel-a"); state != StateStopped {
+		t.Fatalf("expected tunnel state %q after Shutdown, got %q", StateStopped, state)
+	}
+	data, err := os.ReadFile(marker)
+	if err != nil {
+		t.Fatalf("read marker: %v", err)
+	}
+	if !strings.Contains(string(data), "term") {
+		t.Fatalf("expected graceful SIGTERM termination on shutdown, marker=%q", string(data))
+	}
+}
+
 func TestStartMarksPasswordRemoteAsError(t *testing.T) {
 	if runtime.GOOS == "windows" {
 		t.Skip("fake ssh shell script is POSIX-only")

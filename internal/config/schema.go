@@ -1,6 +1,11 @@
 // Package config defines the typed YAML schema for ~/.ssh-tunnel-service/config.yaml.
 package config
 
+// DefaultHTTPListen is the address the management API + Web UI bind to when
+// config.yaml does not set app.http_listen. The CLI also falls back to it when
+// locating the running service.
+const DefaultHTTPListen = "127.0.0.1:2222"
+
 // Config is the root document of config.yaml.
 type Config struct {
 	App     AppConfig `yaml:"app"     json:"app"`

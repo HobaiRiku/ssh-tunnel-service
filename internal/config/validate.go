@@ -140,7 +140,7 @@ func Validate(cfg *Config) error {
 // ApplyDefaults fills in optional fields with their default values.
 func ApplyDefaults(cfg *Config, defaultKnownHosts string) {
 	if cfg.App.HTTPListen == "" {
-		cfg.App.HTTPListen = "127.0.0.1:2222"
+		cfg.App.HTTPListen = DefaultHTTPListen
 	}
 	if cfg.App.LogLevel == "" {
 		cfg.App.LogLevel = "info"
