@@ -3,6 +3,7 @@ package services
 import (
 	"bytes"
 	"context"
+	"errors"
 	"fmt"
 	"log/slog"
 	"os"
@@ -227,7 +228,7 @@ func (m *Manager) Stop(name string) error {
 		m.terminate(name, mp)
 	}
 	if !running && !hadTimer {
-		return fmt.Errorf("tunnel %q is not running", name)
+		return fmt.Errorf("tunnel %q is %w", name, ErrNotRunning)
 	}
 	m.rt.SetStopped(name)
 	m.logger.Info("tunnel stopped", "name", name)
@@ -269,15 +270,14 @@ func (m *Manager) cancelTimerLocked(name string) {
 }
 
 // Restart brings a tunnel back up cleanly — to apply configuration changes or
-// to recover a stale connection. If it is currently running it is stopped first
-// (which waits for the old ssh to exit so ports are released); a stopped tunnel
-// is simply started.
+// to recover a stale connection. Stop waits for any running ssh to exit so the
+// (remote) forward ports are released before Start re-binds them; a tunnel that
+// is already stopped (or exits between calls) is simply started, so a not-running
+// Stop is not an error.
 func (m *Manager) Restart(name, reason string) error {
 	m.logger.Info("restarting tunnel", "name", name, "reason", reason)
-	if m.IsRunning(name) {
-		if err := m.Stop(name); err != nil {
-			return err
-		}
+	if err := m.Stop(name); err != nil && !errors.Is(err, ErrNotRunning) {
+		return err
 	}
 	if err := m.Start(name); err != nil {
 		m.logger.Error("tunnel restart failed", "name", name, "reason", reason, "err", err)

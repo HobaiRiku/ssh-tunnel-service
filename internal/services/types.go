@@ -12,6 +12,10 @@ import (
 // not exist. Callers should use errors.Is to check for this condition.
 var ErrNotFound = errors.New("not found")
 
+// ErrNotRunning is returned by Manager.Stop when the tunnel has no live process.
+// Restart treats it as a benign "nothing to stop" rather than a failure.
+var ErrNotRunning = errors.New("not running")
+
 // TunnelState represents the runtime lifecycle state of a tunnel.
 type TunnelState string
 
