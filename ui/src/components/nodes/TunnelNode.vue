@@ -19,6 +19,8 @@ const props = defineProps<{
 
 const { t } = useI18n()
 
+const arrowColor = computed(() => (props.data.direction === '-R' ? '#9d174d' : '#1d4ed8'))
+
 const stateStyle = computed(() => {
   switch (props.data.state) {
     case 'running':
@@ -56,7 +58,7 @@ const stateStyle = computed(() => {
         <span class="addr">{{ data.remoteHost }}:{{ data.remotePort }}</span>
       </div>
       <div class="target">
-        <span class="target-arrow" aria-hidden="true">→</span>
+        <span class="target-arrow" aria-hidden="true" :style="{ color: arrowColor }">{{ data.direction === '-R' ? '←' : '→' }}</span>
         <span class="endpoint-label endpoint-label--local">{{ t('topology.local') }}</span>
         <span class="addr">{{ data.localHost }}:{{ data.localPort }}</span>
       </div>
@@ -108,7 +110,6 @@ const stateStyle = computed(() => {
 .target-arrow {
   font-size: 13px;
   font-weight: 700;
-  color: #2563eb;
   flex-shrink: 0;
 }
 .dir-badge { font-family: 'SF Mono', 'Fira Code', monospace; font-size: 10px; font-weight: 700; padding: 1px 5px; border-radius: 4px; flex-shrink: 0; }

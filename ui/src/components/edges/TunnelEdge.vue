@@ -49,7 +49,7 @@ const localPortText = computed(() => (props.data?.localPort == null ? '' : Strin
       :style="labelPositionStyle"
     >
       <span class="tunnel-edge-port">{{ remotePortText }}</span>
-      <span class="tunnel-edge-icon" aria-hidden="true">{{ data?.reversed ? '←' : '→' }}</span>
+      <span class="tunnel-edge-icon" aria-hidden="true" :style="{ color: data?.reversed ? '#9d174d' : '#1d4ed8' }">{{ data?.reversed ? '←' : '→' }}</span>
       <span class="tunnel-edge-port">{{ localPortText }}</span>
     </div>
   </EdgeLabelRenderer>
@@ -81,9 +81,7 @@ const localPortText = computed(() => (props.data?.localPort == null ? '' : Strin
   font-size: 13px;
   font-weight: 700;
   line-height: 1;
-  color: #1d4ed8;
 }
 
-.selected .tunnel-edge-icon { color: #2563eb; }
 .selected .tunnel-edge-port { color: #1d4ed8; }
 </style>
