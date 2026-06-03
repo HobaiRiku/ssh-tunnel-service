@@ -54,6 +54,7 @@ func NewRouter(opts Options) *gin.Engine {
 	keys.POST("", addKey(opts.Registry))
 	keys.GET("/:name", getKey(opts.Registry))
 	keys.PUT("/:name", updateKey(opts.Registry))
+	keys.PUT("/:name/default", setDefaultKey(opts.Registry))
 	keys.DELETE("/:name", deleteKey(opts.Registry))
 
 	remotes := api.Group("/remotes")
@@ -145,6 +146,22 @@ func updateKey(reg *services.Registry) gin.HandlerFunc {
 func deleteKey(reg *services.Registry) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		if err := reg.DeleteKey(c.Param("name")); err != nil {
+			if errors.Is(err, services.ErrNotFound) {
+				c.JSON(http.StatusNotFound, apiError(err))
+				return
+			}
+			c.JSON(http.StatusBadRequest, apiError(err))
+			return
+		}
+		c.Status(http.StatusNoContent)
+	}
+}
+
+// setDefaultKey designates the named key as the system default used by unbound
+// tunnels under a system service.
+func setDefaultKey(reg *services.Registry) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		if err := reg.SetSystemDefaultKey(c.Param("name")); err != nil {
 			if errors.Is(err, services.ErrNotFound) {
 				c.JSON(http.StatusNotFound, apiError(err))
 				return

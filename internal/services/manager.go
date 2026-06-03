@@ -50,24 +50,31 @@ type Manager struct {
 	rt       *Runtime
 	reg      *Registry
 	logger   *slog.Logger
+	// systemService is true when running as a system service. It selects the
+	// key-injection policy for tunnels whose remote binds no explicit key:
+	// system services fall back to app.system_default_key, while per-user
+	// (session) runs pass no -i and let ssh use its own default identities.
+	systemService bool
 }
 
 // NewManager creates a tunnel process manager. baseCtx bounds the lifetime of
 // every spawned ssh process; when it is cancelled (service shutdown) the
-// children are killed and supervision stops.
-func NewManager(baseCtx context.Context, reg *Registry, rt *Runtime, logger *slog.Logger) *Manager {
+// children are killed and supervision stops. systemService selects the unbound
+// tunnel key policy (see Manager.systemService).
+func NewManager(baseCtx context.Context, reg *Registry, rt *Runtime, logger *slog.Logger, systemService bool) *Manager {
 	if baseCtx == nil {
 		baseCtx = context.Background()
 	}
 	return &Manager{
-		procs:    map[string]*managedProc{},
-		desired:  map[string]bool{},
-		attempts: map[string]int{},
-		timers:   map[string]*time.Timer{},
-		baseCtx:  baseCtx,
-		rt:       rt,
-		reg:      reg,
-		logger:   logger,
+		procs:         map[string]*managedProc{},
+		desired:       map[string]bool{},
+		attempts:      map[string]int{},
+		timers:        map[string]*time.Timer{},
+		baseCtx:       baseCtx,
+		rt:            rt,
+		reg:           reg,
+		logger:        logger,
+		systemService: systemService,
 	}
 }
 
@@ -204,13 +211,18 @@ func (m *Manager) reconnect(name string) {
 	}
 }
 
-// Command returns the concrete ssh command the service would launch for name.
+// Command returns an ssh command equivalent to what the service launches for
+// name, but with the identity (-i) deliberately omitted. The preview is meant to
+// be copy-pasted into an interactive session where ssh selects the key from the
+// agent / ~/.ssh defaults; the managed key the service actually injects (an
+// explicit remote key or the system default) is an implementation detail of the
+// non-interactive service run and would not exist in the user's session.
 func (m *Manager) Command(name string) (TunnelCommandPreview, error) {
-	ts, remote, key, appCfg, err := m.lookupTunnel(name)
+	ts, remote, _, appCfg, err := m.lookupTunnel(name)
 	if err != nil {
 		return TunnelCommandPreview{}, err
 	}
-	args := sshArgs(ts.Tunnel, remote, key, appCfg, m.reg)
+	args := sshArgs(ts.Tunnel, remote, nil, appCfg, m.reg)
 	return TunnelCommandPreview{
 		Command: shellCommand("ssh", args),
 		Args:    args,
@@ -357,15 +369,23 @@ func (m *Manager) lookupTunnel(name string) (TunnelStatus, config.Remote, *confi
 	if err != nil {
 		return TunnelStatus{}, config.Remote{}, nil, config.AppConfig{}, err
 	}
+	appCfg := m.reg.AppConfig()
+	// An explicit remote key wins. Otherwise, under a system service, fall back
+	// to the managed system default key; in a session run we leave key nil so
+	// ssh uses its own default identities (agent / ~/.ssh/id_*).
+	keyName := remote.Key
+	if keyName == "" && m.systemService {
+		keyName = appCfg.SystemDefaultKey
+	}
 	var key *config.SSHKey
-	if remote.Key != "" {
-		resolvedKey, err := m.reg.GetKey(remote.Key)
+	if keyName != "" {
+		resolvedKey, err := m.reg.GetKey(keyName)
 		if err != nil {
 			return TunnelStatus{}, config.Remote{}, nil, config.AppConfig{}, err
 		}
 		key = &resolvedKey
 	}
-	return ts, remote, key, m.reg.AppConfig(), nil
+	return ts, remote, key, appCfg, nil
 }
 
 func sshArgs(tunnel config.Tunnel, remote config.Remote, key *config.SSHKey, appCfg config.AppConfig, reg *Registry) []string {

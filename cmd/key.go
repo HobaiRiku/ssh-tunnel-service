@@ -19,8 +19,27 @@ func keyCmd() *cobra.Command {
 		Use:   "key",
 		Short: "Manage stored SSH keys",
 	}
-	root.AddCommand(keyListCmd(), keyAddCmd(), keyUpdateCmd(), keyRmCmd())
+	root.AddCommand(keyListCmd(), keyAddCmd(), keyUpdateCmd(), keyRmCmd(), keySetDefaultCmd())
 	return root
+}
+
+func keySetDefaultCmd() *cobra.Command {
+	return &cobra.Command{
+		Use:   "set-default <name>",
+		Short: "Designate a key as the system default for unbound tunnels",
+		Args:  cobra.ExactArgs(1),
+		RunE: func(_ *cobra.Command, args []string) error {
+			client, err := newAPIClient(rootFlags.Home)
+			if err != nil {
+				return err
+			}
+			if err := client.request(http.MethodPut, "/api/keys/"+url.PathEscape(args[0])+"/default", nil, nil); err != nil {
+				return err
+			}
+			fmt.Printf("Key %q is now the system default.\n", args[0])
+			return nil
+		},
+	}
 }
 
 func keyListCmd() *cobra.Command {

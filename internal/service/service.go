@@ -15,6 +15,7 @@ import (
 
 	"ssh-tunnel-service/internal/app"
 	"ssh-tunnel-service/internal/config"
+	"ssh-tunnel-service/internal/elevate"
 	applog "ssh-tunnel-service/internal/log"
 	"ssh-tunnel-service/internal/paths"
 )
@@ -269,7 +270,13 @@ func loadOptions(home string, console bool) (app.Options, io.Closer, error) {
 		return app.Options{}, nil, fmt.Errorf("log init: %w", err)
 	}
 
-	return app.Options{Paths: p, Config: cfg, Logger: logger, APIToken: token}, closer, nil
+	return app.Options{
+		Paths:         p,
+		Config:        cfg,
+		Logger:        logger,
+		APIToken:      token,
+		SystemService: elevate.IsElevated(),
+	}, closer, nil
 }
 
 // loadOrGenerateToken reads the token from tokenPath, creating it if absent.

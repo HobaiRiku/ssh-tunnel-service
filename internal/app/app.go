@@ -24,6 +24,9 @@ type Options struct {
 	Config   *config.Config
 	Logger   *slog.Logger
 	APIToken string // loaded from the token file, not from config.yaml
+	// SystemService is true when running as an elevated system service, which
+	// enables the system default key for unbound tunnels (see Manager).
+	SystemService bool
 }
 
 // Run starts the tunnel manager and HTTP server and blocks until ctx is cancelled.
@@ -38,8 +41,18 @@ func Run(ctx context.Context, opts Options) error {
 
 	rt := services.NewRuntime()
 	reg := services.New(opts.Config, opts.Paths, rt)
-	mgr := services.NewManager(ctx, reg, rt, opts.Logger.With("component", "manager"))
+	mgr := services.NewManager(ctx, reg, rt, opts.Logger.With("component", "manager"), opts.SystemService)
 	reg.SetManager(mgr)
+
+	// As a system service, guarantee the managed default key exists before any
+	// unbound tunnel tries to use it.
+	if opts.SystemService {
+		if name, err := reg.EnsureSystemDefaultKey(); err != nil {
+			return fmt.Errorf("ensure system default key: %w", err)
+		} else {
+			opts.Logger.Info("system default key ready", "key", name)
+		}
+	}
 
 	// AutoStart tunnels marked with auto_start: true; the manager then keeps
 	// them alive (reconnecting on unexpected drops) until ctx is cancelled.

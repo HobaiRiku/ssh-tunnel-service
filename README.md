@@ -102,6 +102,22 @@ service starts at boot without an interactive login. The binary is copied to a
 stable system location during `install`, so the installed service no longer
 depends on where you ran the command from.
 
+### Keys and the system default
+
+Because the system service runs without your login session (no `ssh-agent`,
+no `~/.ssh`, no Keychain), it authenticates only with **managed keys** stored in
+its own key store. `install` offers to import private keys from your `~/.ssh`,
+and always generates a managed **system default key** (ed25519). Tunnels whose
+remote binds no explicit key use this default under the system service; you can
+rotate it (`key update`) or point the default at another key
+(`key set-default`), but it cannot be deleted while designated. In a per-user
+`ssh-tunnel run`, unbound tunnels instead fall back to your normal ssh
+identities, exactly like running `ssh` yourself.
+
+The "equivalent ssh command" preview deliberately **omits** the managed key, so
+you can copy it into your own session to verify connectivity with your normal
+ssh identities.
+
 ```text
 ssh-tunnel [command]
 
@@ -121,10 +137,11 @@ Commands:
     rm        Remove a remote
 
   key         Manage managed SSH private keys
-    list      List managed keys (--json for machine-readable output)
-    add       Add a key from pasted content or an existing file
-    update    Update key metadata or replace stored key material
-    rm        Remove a key
+    list        List managed keys (--json for machine-readable output)
+    add         Add a key from pasted content or an existing file
+    update      Update key metadata or replace stored key material
+    rm          Remove a key (the system default key cannot be removed)
+    set-default Designate a key as the system default for unbound tunnels
 
   tunnel      Manage SSH tunnel definitions
     list      List tunnels and live state (state + pid from the running service)

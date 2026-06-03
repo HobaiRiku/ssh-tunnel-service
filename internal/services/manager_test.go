@@ -98,7 +98,7 @@ func TestCommandIncludesManagedTunnelOptions(t *testing.T) {
 
 	rt := NewRuntime()
 	reg := New(cfg, paths.Paths{Home: "/tmp/home"}, rt)
-	mgr := NewManager(context.Background(), reg, rt, slog.New(slog.NewTextHandler(io.Discard, nil)))
+	mgr := NewManager(context.Background(), reg, rt, slog.New(slog.NewTextHandler(io.Discard, nil)), false)
 
 	preview, err := mgr.Command("tunnel-a")
 	if err != nil {
@@ -117,14 +117,19 @@ func TestCommandIncludesManagedTunnelOptions(t *testing.T) {
 		"-o TCPKeepAlive=yes",
 		"-o StrictHostKeyChecking=accept-new",
 		"-o UserKnownHostsFile=/tmp/known_hosts",
-		"-i /tmp/home/keys/deploy-key",
-		"-o IdentitiesOnly=yes",
 		"-L 127.0.0.1:15432:db.internal:5432",
 		"-o ServerAliveInterval=30",
 		"-p 2222 ubuntu@ssh.example.com",
 	} {
 		if !strings.Contains(joined, want) {
 			t.Fatalf("expected command args to contain %q, got %v", want, preview.Args)
+		}
+	}
+	// The preview deliberately omits the identity (-i): it is a session-equivalent
+	// command meant to be copy-pasted where ssh selects the key itself.
+	for _, unwanted := range []string{"-i ", "IdentitiesOnly=yes"} {
+		if strings.Contains(joined, unwanted) {
+			t.Fatalf("expected preview to omit the key, but args contain %q: %v", unwanted, preview.Args)
 		}
 	}
 	if !strings.HasPrefix(preview.Command, "ssh ") {
@@ -161,7 +166,7 @@ func TestStopTerminatesGracefullyAndWaitsForExit(t *testing.T) {
 
 	rt := NewRuntime()
 	reg := New(cfg, paths.Paths{Home: home}, rt)
-	mgr := NewManager(context.Background(), reg, rt, slog.New(slog.NewTextHandler(io.Discard, nil)))
+	mgr := NewManager(context.Background(), reg, rt, slog.New(slog.NewTextHandler(io.Discard, nil)), false)
 	reg.SetManager(mgr)
 
 	if err := mgr.Start("tunnel-a"); err != nil {
@@ -241,7 +246,7 @@ func TestShutdownTerminatesRunningTunnels(t *testing.T) {
 
 	rt := NewRuntime()
 	reg := New(cfg, paths.Paths{Home: home}, rt)
-	mgr := NewManager(context.Background(), reg, rt, slog.New(slog.NewTextHandler(io.Discard, nil)))
+	mgr := NewManager(context.Background(), reg, rt, slog.New(slog.NewTextHandler(io.Discard, nil)), false)
 	reg.SetManager(mgr)
 
 	if err := mgr.Start("tunnel-a"); err != nil {
@@ -310,7 +315,7 @@ func TestStartMarksPasswordRemoteAsError(t *testing.T) {
 
 	rt := NewRuntime()
 	reg := New(cfg, paths.Paths{Home: home}, rt)
-	mgr := NewManager(context.Background(), reg, rt, slog.New(slog.NewTextHandler(io.Discard, nil)))
+	mgr := NewManager(context.Background(), reg, rt, slog.New(slog.NewTextHandler(io.Discard, nil)), false)
 	reg.SetManager(mgr)
 
 	if err := mgr.Start("tunnel-a"); err != nil {

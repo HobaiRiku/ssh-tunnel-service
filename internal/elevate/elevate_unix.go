@@ -22,8 +22,9 @@ func hasTTY() bool {
 }
 
 // sudoRelaunch re-executes the current binary under sudo, preserving the
-// environment (-E so SSH_TUNNEL_HOME survives) and forwarding all arguments.
-func sudoRelaunch() error {
+// environment (-E so SSH_TUNNEL_HOME survives) and forwarding all arguments plus
+// any extra args the caller wants appended.
+func sudoRelaunch(extraArgs []string) error {
 	exe, err := os.Executable()
 	if err != nil {
 		return fmt.Errorf("resolve current executable: %w", err)
@@ -32,6 +33,7 @@ func sudoRelaunch() error {
 		return fmt.Errorf("this command requires root; re-run with sudo (sudo not found: %w)", err)
 	}
 	args := append([]string{"-E", exe}, os.Args[1:]...)
+	args = append(args, extraArgs...)
 	cmd := exec.Command("sudo", args...)
 	cmd.Stdin = os.Stdin
 	cmd.Stdout = os.Stdout
