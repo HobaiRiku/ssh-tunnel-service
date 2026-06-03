@@ -11,6 +11,7 @@ import (
 
 	"ssh-tunnel-service/internal/api"
 	"ssh-tunnel-service/internal/config"
+	"ssh-tunnel-service/internal/endpoint"
 	"ssh-tunnel-service/internal/paths"
 	"ssh-tunnel-service/internal/services"
 	"ssh-tunnel-service/internal/version"
@@ -66,6 +67,15 @@ func Run(ctx context.Context, opts Options) error {
 		defer cancel()
 		_ = srv.Shutdown(shutdownCtx)
 	}()
+
+	// Advertise this instance for CLI discovery (home-independent). Best-effort:
+	// a failure only means clients must fall back to --home/SSH_TUNNEL_HOME.
+	if path, err := endpoint.Write(opts.Config.App.HTTPListen, opts.Paths.Home); err != nil {
+		opts.Logger.Warn("could not advertise endpoint for CLI discovery", "err", err)
+	} else {
+		opts.Logger.Info("endpoint advertised", "path", path, "scope", endpoint.CurrentScope())
+		defer endpoint.Remove()
+	}
 
 	opts.Logger.Info("management api listening", "addr", opts.Config.App.HTTPListen)
 	err := srv.ListenAndServe()

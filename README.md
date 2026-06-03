@@ -8,7 +8,7 @@ Cross-platform Go daemon that manages SSH `-L` / `-R` port-forwarding tunnels vi
 - **Keys** — paste or upload private keys into the runtime config directory, then associate them with remotes
 - **Tunnels** — `-L` (local forward) or `-R` (remote forward) rules referencing a remote
 - **Topology view** — larger remote groups, direct click selection, and tunnel actions from the topology canvas
-- **YAML config** — all config driven by `~/.ssh-tunnel-service/config.yaml`
+- **YAML config** — all config driven by `config.yaml` in the data root (see [Configuration](#configuration))
 - **API token auth** — generated on first run; injected into the web UI automatically
 - **Non-interactive SSH** — service-managed `known_hosts` trust store with configurable host-key policy
 - **Equivalent SSH command preview** — inspect the concrete ssh command the service will launch for each tunnel
@@ -78,7 +78,7 @@ make dev
 
 Open: `http://localhost:2222`
 
-On first run the service generates an API token and writes it to `~/.ssh-tunnel-service/token` (printed to stderr). The web UI retrieves the token automatically; CLI commands also read it from the same file.
+On first run the service generates an API token and writes it to `<data-root>/token` (printed to stderr). The web UI retrieves the token automatically; CLI commands discover the running service and obtain the token over the loopback-only bootstrap endpoint, so they work even against the root-owned system service without direct access to its files.
 
 ## CLI reference
 
@@ -87,10 +87,20 @@ as its argument and accepts `--name` to rename (e.g. `tunnel update old --name n
 
 The `remote`, `key`, and `tunnel` subcommands operate against the **running
 service** over its local API (so the CLI and Web UI always agree on live state
-and never edit `config.yaml` behind the service's back). If the service is not
+and never edit `config.yaml` behind the service's back). The CLI finds the
+service automatically — a foreground `ssh-tunnel run` instance you started is
+preferred over the installed system service; pass `--home <dir>` (or set
+`SSH_TUNNEL_HOME`) to target a specific instance. If no service is
 running they exit with a hint to start it first (`ssh-tunnel start`, or
 `ssh-tunnel run` in the foreground). Service-control commands (`install`,
 `start`, `stop`, `status`, `tail`, `config`) work without it.
+
+`install`, `uninstall`, `start`, and `stop` manage a **system-level** service and
+require administrator privileges. Run them directly and the CLI will prompt for
+elevation as needed — `sudo` on Linux/macOS, or a UAC dialog on Windows — so the
+service starts at boot without an interactive login. The binary is copied to a
+stable system location during `install`, so the installed service no longer
+depends on where you ran the command from.
 
 ```text
 ssh-tunnel [command]
@@ -151,9 +161,18 @@ make ui-build
 
 ## Configuration
 
-Default location: `~/.ssh-tunnel-service/config.yaml`
+The **data root** holds `config.yaml` and is resolved as: `--home` flag →
+`SSH_TUNNEL_HOME` → platform default. The platform default depends on whether the
+process is privileged, so the system service is independent of whoever installed
+it:
 
-The runtime directory also stores:
+| Platform | System service (elevated) | Per-user (`ssh-tunnel run`) |
+| -------- | ------------------------- | --------------------------- |
+| Linux | `/etc/ssh-tunnel-service` | `~/.ssh-tunnel-service` |
+| macOS | `/Library/Application Support/ssh-tunnel-service` | `~/.ssh-tunnel-service` |
+| Windows | `%ProgramData%\ssh-tunnel-service` | `~\.ssh-tunnel-service` |
+
+The data root stores `config.yaml` plus:
 
 - `token` — API token
 - `known_hosts` — managed host key trust store

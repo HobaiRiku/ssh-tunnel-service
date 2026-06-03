@@ -8,7 +8,6 @@ import (
 	"log/slog"
 	"os"
 	"path/filepath"
-	"runtime"
 	"strings"
 	"sync"
 
@@ -42,6 +41,18 @@ func NewProgram(home string) *Program {
 }
 
 func New(home string) (kservice.Service, *Program, error) {
+	return newWithExe(home, "")
+}
+
+// newWithExe builds the kardianos service, optionally pinning the unit to a
+// specific executable path (used after install copies the binary to a stable
+// system location). An empty exe means "use the current executable".
+//
+// The service is registered as a system-level service on every platform
+// (systemd system unit, macOS LaunchDaemon, Windows SCM service) so it survives
+// reboots without an interactive login and is independent of the installing
+// user. Privilege elevation for the control commands is handled in cmd/.
+func newWithExe(home, exe string) (kservice.Service, *Program, error) {
 	p, resolved, err := newProgram(home)
 	if err != nil {
 		return nil, nil, err
@@ -53,9 +64,7 @@ func New(home string) (kservice.Service, *Program, error) {
 		WorkingDirectory: resolved.Home,
 		EnvVars:          map[string]string{"SSH_TUNNEL_HOME": resolved.Home},
 		Option:           kservice.KeyValue{},
-	}
-	if runtime.GOOS == "darwin" {
-		cfg.Option["UserService"] = true
+		Executable:       exe,
 	}
 	svc, err := kservice.New(p, cfg)
 	if err != nil {
@@ -84,30 +93,53 @@ func RunService(home string) error {
 	return svc.Run()
 }
 
-// Install registers the service with the OS service manager.
+// Install registers the system service. It first copies the running binary to a
+// stable, system-wide location (see binary.go) so the generated unit references
+// that path rather than the caller's working copy, then registers the service
+// pointing at it. The binary copy is rolled back if registration fails.
 func Install(home string) error {
 	if err := validateInstallExecutable(); err != nil {
 		return err
 	}
-	svc, _, err := New(home)
+	installedExe, err := installSystemBinary()
 	if err != nil {
+		return fmt.Errorf("install binary: %w", err)
+	}
+	svc, _, err := newWithExe(home, installedExe)
+	if err != nil {
+		rollbackBinary(installedExe)
 		return err
 	}
 	darwinBootout()
 	if err := svc.Install(); err != nil {
+		rollbackBinary(installedExe)
 		return err
+	}
+	if installedExe != "" {
+		fmt.Fprintf(os.Stderr, "ssh-tunnel: binary installed to %s\n", installedExe)
 	}
 	return darwinBootstrap()
 }
 
-// Uninstall removes the service registration.
+// Uninstall removes the service registration and the installed system binary.
 func Uninstall(home string) error {
 	svc, _, err := New(home)
 	if err != nil {
 		return err
 	}
 	darwinBootout()
-	return svc.Uninstall()
+	if err := svc.Uninstall(); err != nil {
+		return err
+	}
+	return removeSystemBinary()
+}
+
+// rollbackBinary removes a freshly installed binary after a later install step
+// failed, so a retry starts from a clean state.
+func rollbackBinary(installedExe string) {
+	if installedExe != "" {
+		_ = removeSystemBinary()
+	}
 }
 
 // Start requests the OS to start the registered service.

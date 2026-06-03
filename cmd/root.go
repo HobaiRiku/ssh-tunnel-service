@@ -29,7 +29,8 @@ func Root() *cobra.Command {
 		},
 	}
 	root.PersistentFlags().StringVar(&rootFlags.Home, "home", "",
-		"override SSH_TUNNEL_HOME (default $HOME/.ssh-tunnel-service)")
+		"data root for this instance; also selects which instance resource commands target "+
+			"(default: elevated → system path, else $HOME/.ssh-tunnel-service)")
 	root.Flags().BoolP("version", "v", false, "print version and exit")
 
 	root.AddCommand(

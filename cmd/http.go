@@ -11,6 +11,7 @@ import (
 	"strings"
 
 	"ssh-tunnel-service/internal/config"
+	"ssh-tunnel-service/internal/endpoint"
 	"ssh-tunnel-service/internal/paths"
 )
 
@@ -26,10 +27,34 @@ type apiClient struct {
 	token  string
 }
 
-// newAPIClient resolves the service's listen address and API token from the home
-// directory. It never creates or rewrites config — a missing config simply means
-// no service has run yet, and the request will surface the "not running" hint.
+// newAPIClient locates a running service to talk to.
+//
+//   - An explicit --home / SSH_TUNNEL_HOME selects that specific instance: the
+//     address comes from its config.yaml and the token from its token file
+//     (falling back to loopback bootstrap if the file is unreadable, e.g. a
+//     non-root user addressing the system instance by path).
+//   - Otherwise we use runtime discovery: the user instance is tried before the
+//     system one (endpoint.Discover order), obtaining the token via the
+//     loopback-only /api/bootstrap so no access to the service's home is needed.
+//   - As a last resort we fall back to the default home, preserving the original
+//     same-user behavior and "no service running" hint.
 func newAPIClient(home string) (*apiClient, error) {
+	if home != "" || os.Getenv("SSH_TUNNEL_HOME") != "" {
+		return apiClientFromHome(home)
+	}
+	for _, info := range endpoint.Discover() {
+		c := &apiClient{base: "http://" + info.Address, listen: info.Address}
+		if err := c.resolveToken(); err == nil {
+			return c, nil
+		}
+	}
+	return apiClientFromHome("")
+}
+
+// apiClientFromHome builds a client from a resolved home directory. It never
+// creates or rewrites config — a missing config simply means no service has run
+// yet, and the request will surface the "not running" hint.
+func apiClientFromHome(home string) (*apiClient, error) {
 	p, err := paths.Resolve(home)
 	if err != nil {
 		return nil, err
@@ -38,11 +63,48 @@ func newAPIClient(home string) (*apiClient, error) {
 	if cfg, err := config.LoadWithDefaults(p.Config(), p.KnownHosts()); err == nil {
 		listen = cfg.App.HTTPListen
 	}
-	token := ""
+	listen = normalizeListen(listen)
+	c := &apiClient{base: "http://" + listen, listen: listen}
 	if raw, err := os.ReadFile(p.Token()); err == nil {
-		token = strings.TrimSpace(string(raw))
+		c.token = strings.TrimSpace(string(raw))
 	}
-	return &apiClient{base: "http://" + listen, listen: listen, token: token}, nil
+	if c.token == "" {
+		// Token file unreadable (e.g. addressing the root-owned system instance
+		// as a normal user); try the loopback bootstrap instead.
+		_ = c.resolveToken()
+	}
+	return c, nil
+}
+
+// resolveToken fetches the API token from the loopback-only bootstrap endpoint.
+// Success doubles as a liveness check, so discovery can use it to pick a
+// reachable instance.
+func (a *apiClient) resolveToken() error {
+	var out struct {
+		Token string `json:"token"`
+	}
+	if err := a.request(http.MethodGet, "/api/bootstrap", nil, &out); err != nil {
+		return err
+	}
+	if out.Token == "" {
+		return errors.New("bootstrap returned an empty token")
+	}
+	a.token = out.Token
+	return nil
+}
+
+// normalizeListen rewrites a wildcard bind address to loopback so the CLI can
+// connect and satisfy the bootstrap origin check.
+func normalizeListen(addr string) string {
+	host, port, found := strings.Cut(addr, ":")
+	if !found {
+		return addr
+	}
+	switch host {
+	case "", "0.0.0.0", "::", "[::]":
+		return "127.0.0.1:" + port
+	}
+	return addr
 }
 
 // request performs an API call. On a 2xx response it decodes the JSON body into
