@@ -13,6 +13,9 @@ func uninstallCmd() *cobra.Command {
 		Use:   "uninstall",
 		Short: "Uninstall the system service",
 		RunE: func(_ *cobra.Command, _ []string) error {
+			if handled, err := ensurePrivileged(); handled {
+				return err
+			}
 			if err := service.Uninstall(rootFlags.Home); err != nil {
 				return err
 			}

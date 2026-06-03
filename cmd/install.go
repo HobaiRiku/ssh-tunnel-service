@@ -13,6 +13,9 @@ func installCmd() *cobra.Command {
 		Use:   "install",
 		Short: "Install the system service",
 		RunE: func(_ *cobra.Command, _ []string) error {
+			if handled, err := ensurePrivileged(); handled {
+				return err
+			}
 			if err := service.Install(rootFlags.Home); err != nil {
 				return err
 			}

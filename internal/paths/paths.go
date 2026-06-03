@@ -4,7 +4,11 @@
 // Resolution order (first hit wins):
 //  1. explicit override (--home flag on the root cobra command)
 //  2. SSH_TUNNEL_HOME environment variable
-//  3. $HOME/.ssh-tunnel-service
+//  3. platform default — when running elevated this is a system location
+//     (Linux: /etc/ssh-tunnel-service, macOS: /Library/Application Support/
+//     ssh-tunnel-service, Windows: %ProgramData%\ssh-tunnel-service) so the
+//     system service is independent of the installing user's HOME; otherwise it
+//     is the per-user $HOME/.ssh-tunnel-service.
 package paths
 
 import (
@@ -56,6 +60,12 @@ func pickHome(override string) (string, error) {
 	if env := os.Getenv(envHome); env != "" {
 		return env, nil
 	}
+	return platformDefaultHome()
+}
+
+// userHome returns the per-user data root, shared by every platform's
+// non-elevated default.
+func userHome() (string, error) {
 	h, err := os.UserHomeDir()
 	if err != nil || h == "" {
 		return "", errors.New("cannot determine user home; set SSH_TUNNEL_HOME or pass --home")

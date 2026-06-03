@@ -63,7 +63,7 @@ Every key, remote and tunnel is keyed by its unique `name` (there is no `id`). R
 
 ### Paths & home dir
 
-`internal/paths` resolves the data root in this precedence: `--home` flag → `SSH_TUNNEL_HOME` env → `$HOME/.ssh-tunnel-service`. Always go through `paths.Paths` helpers (`Config()`, `Token()`, `KnownHosts()`, `LogFile()`) rather than concatenating strings. Dev runs use `$PWD/.ssh-tunnel-service-home` (set by `make run`/`make test`).
+`internal/paths` resolves the data root in this precedence: `--home` flag → `SSH_TUNNEL_HOME` env → **platform default**. The platform default depends on privilege (`elevate.IsElevated()`) so the system service is decoupled from whoever ran `install`: elevated it is a system path (Linux `/etc/ssh-tunnel-service`, macOS `/Library/Application Support/ssh-tunnel-service`, Windows `%ProgramData%\ssh-tunnel-service`), otherwise the per-user `$HOME/.ssh-tunnel-service`. The platform split lives in `home_{linux,darwin,windows,other}.go`. Always go through `paths.Paths` helpers (`Config()`, `Token()`, `KnownHosts()`, `LogFile()`) rather than concatenating strings. Dev runs use `$PWD/.ssh-tunnel-service-home` (set by `make run`/`make test`).
 
 ### Auth & UI bootstrap
 
@@ -71,13 +71,17 @@ The API token lives in its own file (`<home>/token`), separate from `config.yaml
 
 ### CLI
 
-Cobra tree in `cmd/`. All resource subcommands (`remote`/`key`/`tunnel`, list **and** mutations) go through the running service's REST API via the `apiClient` in `cmd/http.go`, which reads the listen address + token from the home dir. This keeps the CLI from editing `config.yaml` behind a live service (which would drift from its in-memory state and be overwritten on the next persist) and means `tunnel list` shows the service's live `state`/`pid`. When the service isn't running, `apiClient.request` returns a "no service is running … start it with `ssh-tunnel start`" error. Only the service-control commands (`install`/`start`/`stop`/`status`/`tail`) and the `config` file commands work without a running service. Keep the JSON output formats for `remote list` / `key list` / `tunnel list` stable — the README documents them as the "AI-ready CLI" contract.
+Cobra tree in `cmd/`. All resource subcommands (`remote`/`key`/`tunnel`, list **and** mutations) go through the running service's REST API via the `apiClient` in `cmd/http.go`. The CLI is a **discovery client**: with no `--home`/`SSH_TUNNEL_HOME` it locates a running instance through `internal/endpoint` (user instance preferred over the system one) and obtains the token from the loopback-only `/api/bootstrap`, so a normal user can drive the root-owned system service without read access to its home. An explicit `--home`/`SSH_TUNNEL_HOME` instead targets that specific instance directly (address from its `config.yaml`, token from its token file, falling back to bootstrap). This keeps the CLI from editing `config.yaml` behind a live service (which would drift from its in-memory state and be overwritten on the next persist) and means `tunnel list` shows the service's live `state`/`pid`. When no service is running, `apiClient.request` returns a "no service is running … start it with `ssh-tunnel start`" error. Only the service-control commands (`install`/`start`/`stop`/`status`/`tail`) and the `config` file commands work without a running service. Keep the JSON output formats for `remote list` / `key list` / `tunnel list` stable — the README documents them as the "AI-ready CLI" contract.
+
+The running instance advertises its address via `endpoint.Write` in `app.Run` (removed on shutdown); the file lives in a home-independent runtime dir keyed by scope (`/run/ssh-tunnel-service` for system, `$XDG_RUNTIME_DIR/...` for user on Linux — see `dir_{linux,darwin,windows,other}.go`). It carries only the address, never the token.
 
 The service tears tunnels down cleanly on shutdown: `Manager.Shutdown` (called from `app.Run` once the HTTP server stops) marks every tunnel undesired, cancels reconnect timers, and gracefully `terminate`s each `ssh` child, blocking until they exit. `Manager.Start` also sets `cmd.Cancel` (SIGTERM) + `cmd.WaitDelay` so a cancelled `baseCtx` still releases forwarded ports instead of orphaning processes.
 
 ### Service install (`internal/service`)
 
-Uses `kardianos/service` for launchd / systemd / SCM. On macOS the service runs as a **user agent** (`UserService: true`); install/uninstall additionally call `darwinBootstrap`/`darwinBootout` (see `launchctl_darwin.go`) so it actually starts. Don't bypass those wrappers.
+Uses `kardianos/service` for launchd / systemd / SCM. The service is registered **system-level on every platform** (systemd system unit, macOS **LaunchDaemon** in `/Library/LaunchDaemons`, Windows SCM service) so it survives reboots without an interactive login. macOS install/uninstall/start/stop additionally call the `darwin*` wrappers in `launchctl_darwin.go`, which drive the modern `bootstrap`/`bootout`/`kickstart` API in the **`system` domain**; don't bypass them. `install` first copies the running binary to a stable system path (`binary.go` → `/usr/local/bin/ssh-tunnel-service` on Unix, `%ProgramData%\...\bin` on Windows) and pins the unit to it via `kservice.Config.Executable`, rolling the copy back if registration fails; `uninstall` removes it.
+
+The control commands (`install`/`uninstall`/`start`/`stop`) require admin/root. `cmd/ensurePrivileged` (backed by `internal/elevate`) re-executes the command elevated when it isn't already: `sudo` on Linux, `sudo` or the macOS authentication dialog (`osascript`) depending on TTY, and a Windows UAC prompt (`ShellExecute` `runas`). The platform split lives in `elevate_{linux,darwin,windows}.go`.
 
 ## Conventions
 

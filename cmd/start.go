@@ -13,6 +13,9 @@ func startCmd() *cobra.Command {
 		Use:   "start",
 		Short: "Start the installed service",
 		RunE: func(_ *cobra.Command, _ []string) error {
+			if handled, err := ensurePrivileged(); handled {
+				return err
+			}
 			if err := service.Start(rootFlags.Home); err != nil {
 				return err
 			}
