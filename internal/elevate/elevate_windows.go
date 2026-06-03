@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"strings"
+	"syscall"
 
 	"golang.org/x/sys/windows"
 )
@@ -44,7 +45,12 @@ func relaunch(extraArgs []string) error {
 	}
 	verb, _ := windows.UTF16PtrFromString("runas")
 	file, _ := windows.UTF16PtrFromString(exe)
-	args, _ := windows.UTF16PtrFromString(strings.Join(append(append([]string{}, os.Args[1:]...), extraArgs...), " "))
+	allArgs := append(append([]string{}, os.Args[1:]...), extraArgs...)
+	escaped := make([]string, len(allArgs))
+	for i, a := range allArgs {
+		escaped[i] = syscall.EscapeArg(a)
+	}
+	args, _ := windows.UTF16PtrFromString(strings.Join(escaped, " "))
 	cwd, _ := windows.UTF16PtrFromString("")
 
 	const swShowNormal = 1

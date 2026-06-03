@@ -8,29 +8,30 @@ import (
 )
 
 // installSystemBinary copies the current executable to the platform's stable
-// system binary path (see binaryDest) and returns that path. If the running
-// executable already *is* the destination — resolving symlinks on both sides so
-// the check is reliable — it is a no-op and no copy occurs.
-func installSystemBinary() (string, error) {
+// system binary path (see binaryDest) and returns that path and whether a new
+// copy was created. If the running executable already *is* the destination —
+// resolving symlinks on both sides so the check is reliable — it is a no-op
+// and created is false.
+func installSystemBinary() (dest string, created bool, err error) {
 	exe, err := os.Executable()
 	if err != nil {
-		return "", fmt.Errorf("resolve current executable: %w", err)
+		return "", false, fmt.Errorf("resolve current executable: %w", err)
 	}
 	if real, err := filepath.EvalSymlinks(exe); err == nil {
 		exe = real
 	}
-	dest := binaryDest()
+	dest = binaryDest()
 	resolvedDest := dest
 	if real, err := filepath.EvalSymlinks(dest); err == nil {
 		resolvedDest = real
 	}
 	if filepath.Clean(exe) == filepath.Clean(resolvedDest) {
-		return dest, nil
+		return dest, false, nil
 	}
 	if err := copyExecutable(exe, dest); err != nil {
-		return "", fmt.Errorf("install binary to %s: %w", dest, err)
+		return "", false, fmt.Errorf("install binary to %s: %w", dest, err)
 	}
-	return dest, nil
+	return dest, true, nil
 }
 
 // removeSystemBinary deletes the installed binary if present.
