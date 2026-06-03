@@ -16,8 +16,8 @@ import (
 //   - handled == false: already privileged; the caller proceeds to do the work.
 //   - handled == true:  an elevated child performed the work; the caller must
 //     return err verbatim without repeating it.
-func ensurePrivileged() (bool, error) {
-	relaunched, err := elevate.Ensure()
+func ensurePrivileged(extraArgs ...string) (bool, error) {
+	relaunched, err := elevate.Ensure(extraArgs...)
 	if err != nil {
 		if errors.Is(err, elevate.ErrDeclined) {
 			return true, fmt.Errorf("this command needs administrator privileges, but elevation was declined")

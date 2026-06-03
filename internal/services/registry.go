@@ -135,6 +135,10 @@ func (r *Registry) UpdateKey(name string, input SSHKeyInput) error {
 func (r *Registry) DeleteKey(name string) error {
 	r.mu.Lock()
 	next := cloneConfig(r.cfg)
+	if next.App.SystemDefaultKey == name {
+		r.mu.Unlock()
+		return fmt.Errorf("key %q is the system default key; switch app.system_default_key to another key first", name)
+	}
 	for _, remote := range next.Remotes {
 		if remote.Key == name {
 			r.mu.Unlock()
@@ -160,6 +164,69 @@ func (r *Registry) DeleteKey(name string) error {
 	}
 	r.mu.Unlock()
 	return fmt.Errorf("key %q: %w", name, ErrNotFound)
+}
+
+// SetSystemDefaultKey designates an existing key as the system default used by
+// unbound tunnels under a system service. Switching away from the current
+// default is what unlocks deleting it.
+func (r *Registry) SetSystemDefaultKey(name string) error {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if !containsKeyName(r.cfg.Keys, name) {
+		return fmt.Errorf("key %q: %w", name, ErrNotFound)
+	}
+	next := cloneConfig(r.cfg)
+	next.App.SystemDefaultKey = name
+	return r.persist(next)
+}
+
+// EnsureSystemDefaultKey guarantees app.system_default_key points at a real key,
+// generating a fresh ed25519 key (named systemDefaultKeyName) when it is unset
+// or dangling. Idempotent; intended to run once at system-service startup and
+// during install provisioning. Returns the designated key name.
+func (r *Registry) EnsureSystemDefaultKey() (string, error) {
+	r.mu.Lock()
+	if name := r.cfg.App.SystemDefaultKey; name != "" && containsKeyName(r.cfg.Keys, name) {
+		r.mu.Unlock()
+		return name, nil
+	}
+	r.mu.Unlock()
+
+	// Generate material outside the lock; AddKey re-locks and persists.
+	name := r.uniqueDefaultKeyName()
+	priv, err := config.GenerateEd25519PrivateKey("ssh-tunnel-service system default")
+	if err != nil {
+		return "", err
+	}
+	if err := r.AddKey(SSHKeyInput{
+		Name:        name,
+		Description: "Auto-generated system default key for unbound tunnels",
+		PrivateKey:  priv,
+	}); err != nil {
+		return "", fmt.Errorf("create system default key: %w", err)
+	}
+	if err := r.SetSystemDefaultKey(name); err != nil {
+		return "", err
+	}
+	return name, nil
+}
+
+const systemDefaultKeyName = "system-default"
+
+// uniqueDefaultKeyName returns systemDefaultKeyName, suffixing it if a key with
+// that name already exists (so we never collide with an imported key).
+func (r *Registry) uniqueDefaultKeyName() string {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+	if !containsKeyName(r.cfg.Keys, systemDefaultKeyName) {
+		return systemDefaultKeyName
+	}
+	for i := 2; ; i++ {
+		candidate := fmt.Sprintf("%s-%d", systemDefaultKeyName, i)
+		if !containsKeyName(r.cfg.Keys, candidate) {
+			return candidate
+		}
+	}
 }
 
 // ── Remotes ──────────────────────────────────────────────────────────────────

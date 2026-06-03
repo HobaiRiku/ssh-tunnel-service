@@ -37,14 +37,14 @@ func IsElevated() bool {
 // triggers the UAC consent dialog. UAC always spawns a fresh elevated process in
 // a new window; we therefore cannot stream its output back here, so the elevated
 // instance is responsible for surfacing its own result.
-func relaunch() error {
+func relaunch(extraArgs []string) error {
 	exe, err := os.Executable()
 	if err != nil {
 		return fmt.Errorf("resolve current executable: %w", err)
 	}
 	verb, _ := windows.UTF16PtrFromString("runas")
 	file, _ := windows.UTF16PtrFromString(exe)
-	args, _ := windows.UTF16PtrFromString(strings.Join(os.Args[1:], " "))
+	args, _ := windows.UTF16PtrFromString(strings.Join(append(append([]string{}, os.Args[1:]...), extraArgs...), " "))
 	cwd, _ := windows.UTF16PtrFromString("")
 
 	const swShowNormal = 1

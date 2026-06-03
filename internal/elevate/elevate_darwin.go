@@ -13,20 +13,21 @@ import (
 // password prompt). Without one — e.g. launched from a .app bundle or Finder —
 // we fall back to osascript, which raises the native macOS administrator
 // authentication dialog.
-func relaunch() error {
+func relaunch(extraArgs []string) error {
 	if hasTTY() {
-		return sudoRelaunch()
+		return sudoRelaunch(extraArgs)
 	}
-	return osascriptRelaunch()
+	return osascriptRelaunch(extraArgs)
 }
 
-func osascriptRelaunch() error {
+func osascriptRelaunch(extraArgs []string) error {
 	exe, err := os.Executable()
 	if err != nil {
 		return fmt.Errorf("resolve current executable: %w", err)
 	}
 	// Build a properly quoted shell command for AppleScript's `do shell script`.
 	parts := append([]string{exe}, os.Args[1:]...)
+	parts = append(parts, extraArgs...)
 	quoted := make([]string, len(parts))
 	for i, p := range parts {
 		quoted[i] = shellQuote(p)

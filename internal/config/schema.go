@@ -34,6 +34,12 @@ type AppConfig struct {
 	LogCompress      bool             `yaml:"log_compress"         json:"log_compress"`
 	SSHHostKeyPolicy SSHHostKeyPolicy `yaml:"ssh_host_key_policy"  json:"ssh_host_key_policy"`
 	SSHKnownHosts    string           `yaml:"ssh_known_hosts_file" json:"ssh_known_hosts_file,omitempty"`
+	// SystemDefaultKey names the managed key used by tunnels whose remote binds
+	// no explicit key when the service runs as a system service. It is generated
+	// on first system-service start, cannot be deleted while designated, and may
+	// be switched to another key or rotated in place. It is unused in per-user
+	// (session) runs, where unbound tunnels rely on the system ssh defaults.
+	SystemDefaultKey string `yaml:"system_default_key"   json:"system_default_key,omitempty"`
 }
 
 // SSHKey is a managed private key stored beneath the runtime home directory.

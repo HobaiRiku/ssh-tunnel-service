@@ -86,6 +86,10 @@ func Validate(cfg *Config) error {
 		}
 	}
 
+	if cfg.App.SystemDefaultKey != "" && !keyNames[cfg.App.SystemDefaultKey] {
+		return fmt.Errorf("app.system_default_key %q not found", cfg.App.SystemDefaultKey)
+	}
+
 	remoteNames := map[string]bool{}
 	for i, r := range cfg.Remotes {
 		if err := ValidateName("remote", r.Name); err != nil {
