@@ -5,7 +5,9 @@
 // The platform-specific files provide:
 //   - IsElevated() bool  — is the current process already privileged?
 //   - relaunch() error   — re-execute the current binary with elevation,
-//     forwarding the same arguments and waiting for completion.
+//     forwarding the same arguments. On Unix (sudo) this waits for the child to
+//     exit; on Windows the UAC prompt spawns a new window and relaunch returns
+//     immediately after the consent dialog — waiting is not possible there.
 package elevate
 
 import "errors"

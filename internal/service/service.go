@@ -102,21 +102,21 @@ func Install(home string) error {
 	if err := validateInstallExecutable(); err != nil {
 		return err
 	}
-	installedExe, err := installSystemBinary()
+	installedExe, created, err := installSystemBinary()
 	if err != nil {
 		return fmt.Errorf("install binary: %w", err)
 	}
 	svc, _, err := newWithExe(home, installedExe)
 	if err != nil {
-		rollbackBinary(installedExe)
+		rollbackBinary(installedExe, created)
 		return err
 	}
 	darwinBootout()
 	if err := svc.Install(); err != nil {
-		rollbackBinary(installedExe)
+		rollbackBinary(installedExe, created)
 		return err
 	}
-	if installedExe != "" {
+	if created {
 		fmt.Fprintf(os.Stderr, "ssh-tunnel: binary installed to %s\n", installedExe)
 	}
 	return darwinBootstrap()
@@ -136,9 +136,11 @@ func Uninstall(home string) error {
 }
 
 // rollbackBinary removes a freshly installed binary after a later install step
-// failed, so a retry starts from a clean state.
-func rollbackBinary(installedExe string) {
-	if installedExe != "" {
+// failed, so a retry starts from a clean state. It only removes the binary when
+// created is true — i.e. this invocation wrote it — to avoid deleting an
+// existing binary that was already present before install ran.
+func rollbackBinary(installedExe string, created bool) {
+	if installedExe != "" && created {
 		_ = removeSystemBinary()
 	}
 }
