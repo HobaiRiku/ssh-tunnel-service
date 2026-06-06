@@ -65,6 +65,10 @@ func Run(ctx context.Context, opts Options) error {
 		Manager:  mgr,
 		Logger:   opts.Logger.With("component", "api"),
 		APIToken: opts.APIToken,
+		Scope:    string(endpoint.CurrentScope()),
+		Home:     opts.Paths.Home,
+		Address:  opts.Config.App.HTTPListen,
+		Started:  time.Now(),
 	})
 	web.Mount(router, opts.APIToken)
 

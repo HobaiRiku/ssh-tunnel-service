@@ -8,6 +8,7 @@ import (
 	"io"
 	"net/http"
 	"os"
+	"path/filepath"
 	"strings"
 
 	"ssh-tunnel-service/internal/config"
@@ -25,30 +26,132 @@ type apiClient struct {
 	base   string
 	listen string
 	token  string
+	scope  string // "system" | "user" | "custom" (for the instance banner)
+	home   string // resolved data root, when known
 }
 
-// newAPIClient locates a running service to talk to.
-//
-//   - An explicit --home / SSH_TUNNEL_HOME selects that specific instance: the
-//     address comes from its config.yaml and the token from its token file
-//     (falling back to loopback bootstrap if the file is unreadable, e.g. a
-//     non-root user addressing the system instance by path).
-//   - Otherwise we use runtime discovery: the user instance is tried before the
-//     system one (endpoint.Discover order), obtaining the token via the
-//     loopback-only /api/bootstrap so no access to the service's home is needed.
-//   - As a last resort we fall back to the default home, preserving the original
-//     same-user behavior and "no service running" hint.
+// bannerSuppressed silences the per-command instance banner. Commands that
+// build their own client for inspection (e.g. `connect --show`) set it.
+var bannerSuppressed bool
+
+// newAPIClient resolves the target instance and prints the instance banner to
+// stderr (unless suppressed). See resolveClient for the attach precedence.
 func newAPIClient(home string) (*apiClient, error) {
-	if home != "" || os.Getenv("SSH_TUNNEL_HOME") != "" {
-		return apiClientFromHome(home)
+	c, err := resolveClient(home)
+	if err != nil {
+		return nil, err
 	}
+	if !bannerSuppressed {
+		fmt.Fprintln(os.Stderr, c.banner())
+	}
+	return c, nil
+}
+
+// resolveClient locates a running service to talk to, in precedence order:
+//
+//		--home flag  →  SSH_TUNNEL_HOME env  →  persisted context  →  auto-discovery
+//
+//	  - An explicit --home / SSH_TUNNEL_HOME is a one-shot override selecting that
+//	    specific instance by path (token from its token file, falling back to
+//	    loopback bootstrap if unreadable). It does not mutate the context.
+//	  - A persisted context (set via `connect`) pins system/user/custom. An
+//	    unhealthy pinned instance does not hard-fail: we print a notice and fall
+//	    through to auto-discovery.
+//	  - Auto-discovery tries the user instance before the system one, obtaining
+//	    the token via the loopback-only /api/bootstrap.
+//	  - As a last resort we fall back to the default home, preserving the "no
+//	    service running" hint.
+func resolveClient(home string) (*apiClient, error) {
+	if home != "" {
+		return clientForHome(home, scopeCustom)
+	}
+	if env := os.Getenv("SSH_TUNNEL_HOME"); env != "" {
+		return clientForHome(env, scopeCustom)
+	}
+
+	switch ctx := loadContext(); ctx.Scope {
+	case scopeSystem, scopeUser:
+		if epScope, ok := scopeToEndpoint(ctx.Scope); ok {
+			if c, err := clientForScope(epScope); err == nil {
+				return c, nil
+			}
+		}
+		fallbackNotice(ctx.Scope)
+	case scopeCustom:
+		if c, err := clientForHome(ctx.Home, scopeCustom); err == nil && c.healthy() {
+			return c, nil
+		}
+		fallbackNotice(scopeCustom + " " + ctx.Home)
+	}
+
 	for _, info := range endpoint.Discover() {
-		c := &apiClient{base: "http://" + info.Address, listen: info.Address}
+		c := clientFromInfo(info)
 		if err := c.resolveToken(); err == nil {
 			return c, nil
 		}
 	}
 	return apiClientFromHome("")
+}
+
+// fallbackNotice warns that a pinned context is unreachable and discovery is
+// taking over, so the user understands why the active instance changed.
+func fallbackNotice(what string) {
+	fmt.Fprintf(os.Stderr,
+		"ssh-tunnel: last connected instance (%s) is not reachable; falling back to auto-discovery\n", what)
+}
+
+// clientFromInfo builds a client from a discovery record.
+func clientFromInfo(info endpoint.Info) *apiClient {
+	return &apiClient{
+		base:   "http://" + info.Address,
+		listen: info.Address,
+		scope:  string(info.Scope),
+		home:   info.Home,
+	}
+}
+
+// clientForScope resolves a scope's advertised endpoint and authenticates.
+func clientForScope(scope endpoint.Scope) (*apiClient, error) {
+	info, ok := endpoint.Lookup(scope)
+	if !ok {
+		return nil, fmt.Errorf("no %s instance is running", scope)
+	}
+	c := clientFromInfo(info)
+	if err := c.resolveToken(); err != nil {
+		return nil, err
+	}
+	return c, nil
+}
+
+// clientForHome builds a client targeting a specific data root, labelling it
+// with the given scope for the banner.
+func clientForHome(home, scope string) (*apiClient, error) {
+	c, err := apiClientFromHome(home)
+	if err != nil {
+		return nil, err
+	}
+	c.scope = scope
+	if p, err := paths.Resolve(home); err == nil {
+		c.home = p.Home
+	}
+	return c, nil
+}
+
+// healthy reports whether the instance answers the unauthenticated health probe.
+func (a *apiClient) healthy() bool {
+	return a.request(http.MethodGet, "/api/health", nil, nil) == nil
+}
+
+// banner renders the one-line instance identity for stderr.
+func (a *apiClient) banner() string {
+	scope := a.scope
+	if scope == "" {
+		scope = "instance"
+	}
+	if scope == scopeCustom && a.home != "" {
+		return fmt.Sprintf("[ssh-tunnel @ %s %s · %s]", scope, filepath.Base(a.home), a.listen)
+	}
+	return fmt.Sprintf("[ssh-tunnel @ %s · %s]", scope, a.listen)
 }
 
 // apiClientFromHome builds a client from a resolved home directory. It never

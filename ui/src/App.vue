@@ -1,13 +1,33 @@
 <script setup lang="ts">
 import { NConfigProvider, NMessageProvider, NSelect, darkTheme, useOsTheme } from 'naive-ui'
 import { RouterLink, useRoute } from 'vue-router'
-import { computed } from 'vue'
+import { computed, onMounted, ref } from 'vue'
 import { useI18n, type Locale } from '@/i18n'
+import { api, type InstanceInfo } from '@/api/client'
 
 const osTheme = useOsTheme()
 const theme = computed(() => osTheme.value === 'dark' ? darkTheme : null)
 const route = useRoute()
 const { locale, setLocale, t } = useI18n()
+
+// Instance identity badge: which instance this UI is talking to, mirroring the
+// CLI banner so users always know what they are operating on.
+const instance = ref<InstanceInfo | null>(null)
+const instanceLabel = computed(() => {
+  const info = instance.value
+  if (!info) return ''
+  const tail = info.home ? info.home.split(/[\\/]/).filter(Boolean).pop() : ''
+  const scope = info.scope || 'instance'
+  return info.scope === 'custom' && tail ? `${scope} · ${tail}` : scope
+})
+
+onMounted(async () => {
+  try {
+    instance.value = await api.instance()
+  } catch {
+    instance.value = null
+  }
+})
 
 const localeOptions = computed(() => [
   { label: t('app.english'), value: 'en' satisfies Locale },
@@ -58,6 +78,11 @@ function switchLocale(next: Locale) {
               :class="{ active: route.path === tab.to }"
             >{{ tab.label }}</RouterLink>
           </nav>
+          <span
+            v-if="instanceLabel"
+            class="instance-badge"
+            :title="instance ? `${instance.address} · ${instance.home}` : ''"
+          >{{ instanceLabel }}</span>
           <n-select
             class="locale-switcher"
             size="small"
@@ -138,8 +163,23 @@ body {
 
 .nav-tab:hover { color: #334155; }
 .nav-tab.active { color: #2563eb; border-bottom-color: #2563eb; }
-.locale-switcher {
+
+.instance-badge {
+  display: inline-flex;
+  align-items: center;
   margin-left: auto;
+  padding: 3px 10px;
+  font-size: 12px;
+  font-weight: 600;
+  color: #2563eb;
+  background: #eff6ff;
+  border: 1px solid #bfdbfe;
+  border-radius: 999px;
+  white-space: nowrap;
+  user-select: none;
+}
+
+.locale-switcher {
   width: 96px;
   flex-shrink: 0;
 }
