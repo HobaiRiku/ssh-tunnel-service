@@ -69,6 +69,7 @@ func Run(ctx context.Context, opts Options) error {
 		Home:     opts.Paths.Home,
 		Address:  opts.Config.App.HTTPListen,
 		Started:  time.Now(),
+		LogFile:  opts.Paths.LogFile(),
 	})
 	web.Mount(router, opts.APIToken)
 
