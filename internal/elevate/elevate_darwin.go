@@ -35,8 +35,6 @@ func osascriptRelaunch(extraArgs []string) error {
 	shellCmd := strings.Join(quoted, " ")
 	script := fmt.Sprintf(`do shell script %s with administrator privileges`, appleScriptQuote(shellCmd))
 	cmd := exec.Command("osascript", "-e", script)
-	cmd.Stdout = os.Stdout
-	cmd.Stderr = os.Stderr
 	out, err := cmd.CombinedOutput()
 	if err != nil {
 		msg := strings.TrimSpace(string(out))

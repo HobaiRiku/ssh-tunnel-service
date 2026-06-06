@@ -30,7 +30,10 @@ func TestResolvePrecedence(t *testing.T) {
 // privilege level (which selects between userHome and the platform system path).
 func TestUserHome(t *testing.T) {
 	home := t.TempDir()
+	// os.UserHomeDir consults HOME on Unix and USERPROFILE on Windows; set both
+	// so this test is hermetic across platforms.
 	t.Setenv("HOME", home)
+	t.Setenv("USERPROFILE", home)
 
 	got, err := userHome()
 	if err != nil {

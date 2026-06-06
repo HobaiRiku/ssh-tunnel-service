@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"strings"
 
 	"ssh-tunnel-service/internal/config"
 	"ssh-tunnel-service/internal/paths"
@@ -69,7 +68,7 @@ func importKeyFile(reg *services.Registry, path string) error {
 		FileName:    name,
 	})
 	if err != nil {
-		if strings.Contains(err.Error(), "already exists") {
+		if errors.Is(err, services.ErrAlreadyExists) {
 			fmt.Fprintf(os.Stderr, "ssh-tunnel: key %q already imported, skipping\n", name)
 			return nil
 		}

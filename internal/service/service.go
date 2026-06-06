@@ -119,7 +119,14 @@ func Install(home string) error {
 	if created {
 		fmt.Fprintf(os.Stderr, "ssh-tunnel: binary installed to %s\n", installedExe)
 	}
-	return darwinBootstrap()
+	if err := darwinBootstrap(); err != nil {
+		// darwinBootstrap failed after the OS service was registered — undo
+		// everything so the user can retry from a known-clean state.
+		_ = svc.Uninstall()
+		rollbackBinary(installedExe, created)
+		return err
+	}
+	return nil
 }
 
 // Uninstall removes the service registration and the installed system binary.

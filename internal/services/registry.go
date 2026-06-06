@@ -80,7 +80,7 @@ func (r *Registry) AddKey(input SSHKeyInput) error {
 	for _, existing := range next.Keys {
 		if existing.Name == key.Name {
 			r.mu.Unlock()
-			return fmt.Errorf("key %q already exists", key.Name)
+			return fmt.Errorf("key %q already exists: %w", key.Name, ErrAlreadyExists)
 		}
 	}
 	next.Keys = append(next.Keys, key)
@@ -106,7 +106,7 @@ func (r *Registry) UpdateKey(name string, input SSHKeyInput) error {
 		}
 		if key.Name != name && containsKeyName(next.Keys, key.Name) {
 			r.mu.Unlock()
-			return fmt.Errorf("key %q already exists", key.Name)
+			return fmt.Errorf("key %q already exists: %w", key.Name, ErrAlreadyExists)
 		}
 		next.Keys[i] = key
 		// A rename must cascade to every remote that references this key.
@@ -261,7 +261,7 @@ func (r *Registry) AddRemote(remote config.Remote) error {
 		return err
 	}
 	if containsRemoteName(next.Remotes, remote.Name) {
-		return fmt.Errorf("remote %q already exists", remote.Name)
+		return fmt.Errorf("remote %q already exists: %w", remote.Name, ErrAlreadyExists)
 	}
 	next.Remotes = append(next.Remotes, remote)
 	return r.persist(next)
@@ -284,7 +284,7 @@ func (r *Registry) UpdateRemote(name string, update config.Remote) error {
 		}
 		if update.Name != name && containsRemoteName(next.Remotes, update.Name) {
 			r.mu.Unlock()
-			return fmt.Errorf("remote %q already exists", update.Name)
+			return fmt.Errorf("remote %q already exists: %w", update.Name, ErrAlreadyExists)
 		}
 		next.Remotes[i] = update
 		// A rename must cascade to every tunnel that references this remote.
@@ -363,7 +363,7 @@ func (r *Registry) AddTunnel(t config.Tunnel) error {
 	}
 	if containsTunnelName(next.Tunnels, t.Name) {
 		r.mu.Unlock()
-		return fmt.Errorf("tunnel %q already exists", t.Name)
+		return fmt.Errorf("tunnel %q already exists: %w", t.Name, ErrAlreadyExists)
 	}
 	next.Tunnels = append(next.Tunnels, t)
 	if err := r.persist(next); err != nil {
@@ -400,7 +400,7 @@ func (r *Registry) UpdateTunnel(name string, update config.Tunnel) error {
 		}
 		if update.Name != name && containsTunnelName(next.Tunnels, update.Name) {
 			r.mu.Unlock()
-			return fmt.Errorf("tunnel %q already exists", update.Name)
+			return fmt.Errorf("tunnel %q already exists: %w", update.Name, ErrAlreadyExists)
 		}
 		next.Tunnels[i] = update
 		state, _, _ := r.runtime.Get(name)
