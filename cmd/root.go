@@ -41,6 +41,7 @@ func Root() *cobra.Command {
 		stopCmd(),
 		statusCmd(),
 		tailCmd(),
+		connectCmd(),
 		remoteCmd(),
 		keyCmd(),
 		tunnelCmd(),

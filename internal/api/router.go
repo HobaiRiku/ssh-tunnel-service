@@ -5,7 +5,9 @@ import (
 	"errors"
 	"log/slog"
 	"net/http"
+	"os"
 	"strings"
+	"time"
 
 	"github.com/gin-gonic/gin"
 
@@ -22,6 +24,12 @@ type Options struct {
 	Manager  *services.Manager
 	Logger   *slog.Logger
 	APIToken string
+	// Instance identity, surfaced via /api/instance for the CLI banner/status and
+	// the web UI badge.
+	Scope   string
+	Home    string
+	Address string
+	Started time.Time
 }
 
 // NewRouter builds the gin engine with all API routes mounted.
@@ -48,6 +56,7 @@ func NewRouter(opts Options) *gin.Engine {
 	api.Use(tokenAuth(opts.APIToken))
 
 	api.GET("/version", func(c *gin.Context) { c.JSON(http.StatusOK, version.Current()) })
+	api.GET("/instance", instanceInfo(opts))
 
 	keys := api.Group("/keys")
 	keys.GET("", listKeys(opts.Registry))
@@ -76,6 +85,26 @@ func NewRouter(opts Options) *gin.Engine {
 	tunnels.POST("/:name/restart", restartTunnel(opts.Manager))
 
 	return r
+}
+
+// instanceInfo reports this instance's identity for the CLI banner/status and
+// the web UI badge.
+func instanceInfo(opts Options) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		var uptime float64
+		if !opts.Started.IsZero() {
+			uptime = time.Since(opts.Started).Seconds()
+		}
+		c.JSON(http.StatusOK, gin.H{
+			"scope":          opts.Scope,
+			"home":           opts.Home,
+			"address":        opts.Address,
+			"pid":            os.Getpid(),
+			"version":        version.Current().Version,
+			"started_at":     opts.Started,
+			"uptime_seconds": uptime,
+		})
+	}
 }
 
 func listKeys(reg *services.Registry) gin.HandlerFunc {

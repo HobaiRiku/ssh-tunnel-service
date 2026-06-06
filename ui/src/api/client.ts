@@ -48,6 +48,15 @@ export interface TunnelCommandPreview {
   args: string[]
 }
 
+export interface InstanceInfo {
+  scope: string
+  home: string
+  address: string
+  pid: number
+  version: string
+  uptime_seconds: number
+}
+
 interface BootstrapResponse {
   token?: string
 }
@@ -130,6 +139,8 @@ export const api = {
   startTunnel: (name: string) => req<void>('POST', `/tunnels/${seg(name)}/start`),
   stopTunnel: (name: string) => req<void>('POST', `/tunnels/${seg(name)}/stop`),
   restartTunnel: (name: string) => req<void>('POST', `/tunnels/${seg(name)}/restart`),
+
+  instance: () => req<InstanceInfo>('GET', '/instance'),
 
   health: () => req<{ ok: boolean }>('GET', '/health'),
 }

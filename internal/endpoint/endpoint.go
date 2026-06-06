@@ -102,6 +102,11 @@ func Discover() []Info {
 	return out
 }
 
+// Lookup returns the advertised instance for a single scope, if present.
+func Lookup(scope Scope) (Info, bool) {
+	return read(scope)
+}
+
 func read(scope Scope) (Info, bool) {
 	dir, err := scopeDir(scope)
 	if err != nil {
