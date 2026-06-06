@@ -6,6 +6,7 @@ toolchain go1.24.13
 
 require (
 	github.com/gin-gonic/gin v1.10.0
+	github.com/gorilla/websocket v1.5.3
 	github.com/kardianos/service v1.2.2
 	github.com/spf13/cobra v1.9.1
 	golang.org/x/crypto v0.23.0

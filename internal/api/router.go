@@ -30,6 +30,8 @@ type Options struct {
 	Home    string
 	Address string
 	Started time.Time
+	// LogFile is the service log path streamed by /api/logs/stream.
+	LogFile string
 }
 
 // NewRouter builds the gin engine with all API routes mounted.
@@ -57,6 +59,7 @@ func NewRouter(opts Options) *gin.Engine {
 
 	api.GET("/version", func(c *gin.Context) { c.JSON(http.StatusOK, version.Current()) })
 	api.GET("/instance", instanceInfo(opts))
+	api.GET("/logs/stream", streamLogs(opts.LogFile))
 
 	keys := api.Group("/keys")
 	keys.GET("", listKeys(opts.Registry))

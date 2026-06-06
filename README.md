@@ -91,8 +91,10 @@ and never edit `config.yaml` behind the service's back). The CLI finds the
 service automatically — a foreground `ssh-tunnel run` instance you started is
 preferred over the installed system service. If no service is running they exit
 with a hint to start it first (`ssh-tunnel start`, or `ssh-tunnel run` in the
-foreground). Service-control commands (`install`, `start`, `stop`, `status`,
-`tail`, `config`) work without it.
+foreground). `status` and `tail` also talk to the running service over the API
+(read-only, no elevation): `tail` streams the log over a WebSocket, so it never
+needs filesystem access to the data root. The remaining service-control commands
+(`install`, `start`, `stop`, `config`) work without a running service.
 
 ### Choosing an instance (`connect`)
 
@@ -161,7 +163,7 @@ Commands:
   start       Start the installed service
   stop        Stop the installed service
   status      Show the attached instance's status (--json supported)
-  tail        Tail the current service log in real time
+  tail        Stream the attached instance's log over the API (WebSocket)
   connect     Choose which instance the CLI attaches to (--show / --clear)
 
   remote      Manage remote SSH targets

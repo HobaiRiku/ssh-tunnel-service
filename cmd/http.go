@@ -2,6 +2,7 @@ package cmd
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -10,6 +11,9 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"time"
+
+	"github.com/gorilla/websocket"
 
 	"ssh-tunnel-service/internal/config"
 	"ssh-tunnel-service/internal/endpoint"
@@ -194,6 +198,49 @@ func (a *apiClient) resolveToken() error {
 	}
 	a.token = out.Token
 	return nil
+}
+
+// streamLogs connects to the instance's /api/logs/stream WebSocket and writes
+// every received chunk to out until ctx is cancelled or the server closes.
+func (a *apiClient) streamLogs(ctx context.Context, lines int, follow bool, out io.Writer) error {
+	wsURL := "ws" + strings.TrimPrefix(a.base, "http") +
+		fmt.Sprintf("/api/logs/stream?lines=%d&follow=%t", lines, follow)
+	header := http.Header{}
+	if a.token != "" {
+		header.Set("Authorization", "Bearer "+a.token)
+	}
+	conn, resp, err := websocket.DefaultDialer.DialContext(ctx, wsURL, header)
+	if err != nil {
+		if resp != nil && resp.StatusCode == http.StatusUnauthorized {
+			return errors.New("unauthorized: could not authenticate to the log stream")
+		}
+		return fmt.Errorf("no service is running at %s — start it with `ssh-tunnel start` (or run `ssh-tunnel run` in the foreground)", a.listen)
+	}
+	defer conn.Close()
+
+	// Close the connection when the caller cancels (e.g. Ctrl-C) so ReadMessage
+	// returns and we exit cleanly.
+	go func() {
+		<-ctx.Done()
+		_ = conn.WriteControl(websocket.CloseMessage,
+			websocket.FormatCloseMessage(websocket.CloseNormalClosure, ""),
+			time.Now().Add(time.Second))
+		_ = conn.Close()
+	}()
+
+	for {
+		_, msg, err := conn.ReadMessage()
+		if err != nil {
+			if ctx.Err() != nil ||
+				websocket.IsCloseError(err, websocket.CloseNormalClosure, websocket.CloseGoingAway) {
+				return nil
+			}
+			return err
+		}
+		if _, werr := out.Write(msg); werr != nil {
+			return werr
+		}
+	}
 }
 
 // normalizeListen rewrites a wildcard bind address to loopback so the CLI can
