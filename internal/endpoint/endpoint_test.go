@@ -21,10 +21,18 @@ func TestNormalizeAddr(t *testing.T) {
 
 // TestWriteDiscoverRoundtrip writes an endpoint and confirms Discover reads it
 // back with a normalized address. It works under either scope: a non-root run
-// advertises under the user scope (redirected here via XDG_RUNTIME_DIR), while a
+// advertises under the user scope (redirected here into a temp dir), while a
 // root run advertises under the system scope.
 func TestWriteDiscoverRoundtrip(t *testing.T) {
-	t.Setenv("XDG_RUNTIME_DIR", t.TempDir())
+	tmp := t.TempDir()
+	// Redirect every platform's user-scope directory to tmp so the test is
+	// hermetic: XDG_RUNTIME_DIR (Linux), HOME/USERPROFILE (macOS UserCacheDir
+	// via ~/Library/Caches), and TEMP (Windows).
+	t.Setenv("XDG_RUNTIME_DIR", tmp)
+	t.Setenv("HOME", tmp)
+	t.Setenv("USERPROFILE", tmp)
+	t.Setenv("TEMP", tmp)
+	t.Setenv("TMP", tmp)
 
 	path, err := Write("0.0.0.0:2222", "/tmp/home")
 	if err != nil {

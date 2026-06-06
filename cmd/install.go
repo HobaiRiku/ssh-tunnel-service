@@ -41,11 +41,13 @@ func installCmd() *cobra.Command {
 			}
 
 			// Elevated: register the service, then provision the system home with
-			// the chosen keys and a guaranteed default key.
+			// the chosen keys and a guaranteed default key. If provisioning fails
+			// after the service has been installed, roll back so a retry is clean.
 			if err := service.Install(rootFlags.Home); err != nil {
 				return err
 			}
 			if err := service.Provision(rootFlags.Home, importKeys); err != nil {
+				_ = service.Uninstall(rootFlags.Home)
 				return fmt.Errorf("provision keys: %w", err)
 			}
 			fmt.Println("Service installed successfully.")

@@ -16,6 +16,10 @@ var ErrNotFound = errors.New("not found")
 // Restart treats it as a benign "nothing to stop" rather than a failure.
 var ErrNotRunning = errors.New("not running")
 
+// ErrAlreadyExists is returned by registry Add operations when a resource with
+// the given name already exists. Callers should use errors.Is to check for it.
+var ErrAlreadyExists = errors.New("already exists")
+
 // TunnelState represents the runtime lifecycle state of a tunnel.
 type TunnelState string
 
