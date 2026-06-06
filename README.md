@@ -89,11 +89,44 @@ The `remote`, `key`, and `tunnel` subcommands operate against the **running
 service** over its local API (so the CLI and Web UI always agree on live state
 and never edit `config.yaml` behind the service's back). The CLI finds the
 service automatically — a foreground `ssh-tunnel run` instance you started is
-preferred over the installed system service; pass `--home <dir>` (or set
-`SSH_TUNNEL_HOME`) to target a specific instance. If no service is
-running they exit with a hint to start it first (`ssh-tunnel start`, or
-`ssh-tunnel run` in the foreground). Service-control commands (`install`,
-`start`, `stop`, `status`, `tail`, `config`) work without it.
+preferred over the installed system service. If no service is running they exit
+with a hint to start it first (`ssh-tunnel start`, or `ssh-tunnel run` in the
+foreground). Service-control commands (`install`, `start`, `stop`, `status`,
+`tail`, `config`) work without it.
+
+### Choosing an instance (`connect`)
+
+The system service, your per-user `ssh-tunnel run`, and any custom `--home`
+instance can all run at once. `connect` sets the **persistent instance context**
+the CLI attaches to by default:
+
+```bash
+ssh-tunnel connect system          # attach to the system service
+ssh-tunnel connect user            # attach to your per-user instance
+ssh-tunnel connect /path/to/home   # attach to a custom instance by data root
+ssh-tunnel connect                 # interactively pick system / user / last custom
+ssh-tunnel connect --show          # print the active context and its health
+ssh-tunnel connect --clear         # reset to automatic discovery
+```
+
+The context is stored in `~/.ssh-tunnel-service/context.json` (only the active
+selection plus the most recent custom home — no full history). `connect`
+validates the target is reachable before saving it, and if a saved context later
+becomes unreachable the CLI falls back to auto-discovery with a notice.
+
+Attach precedence (highest first):
+
+```text
+--home flag  →  SSH_TUNNEL_HOME env  →  saved context  →  auto-discovery (user > system)
+```
+
+`--home` / `SSH_TUNNEL_HOME` remain **one-shot** overrides — they target a
+specific instance for that invocation without changing the saved context. Every
+resource command prints a `[ssh-tunnel @ <scope> · <address>]` banner to stderr
+so you always know which instance you are operating on (the web UI shows the
+same identity as a header badge). `status` reports the attached instance's
+running state, PID, version, and uptime read-only over the API — no elevation
+required.
 
 `install`, `uninstall`, `start`, and `stop` manage a **system-level** service and
 require administrator privileges. Run them directly and the CLI will prompt for
@@ -127,8 +160,9 @@ Commands:
   uninstall   Remove the system service registration
   start       Start the installed service
   stop        Stop the installed service
-  status      Show service status
+  status      Show the attached instance's status (--json supported)
   tail        Tail the current service log in real time
+  connect     Choose which instance the CLI attaches to (--show / --clear)
 
   remote      Manage remote SSH targets
     list      List remotes (--json for machine-readable output)
