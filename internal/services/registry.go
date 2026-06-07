@@ -641,6 +641,39 @@ func (r *Registry) finalizeKeyMaterial(oldFile, newFilePath string) error {
 	return nil
 }
 
+// EnsurePublicKeys backfills a `.pub` file next to every managed private key
+// that is missing one (e.g. keys created before public-key materialization
+// existed). It derives the public key from the private one and writes it 0644.
+// Missing or unreadable private keys and derivation failures are skipped so a
+// single bad key never blocks startup. Safe to call repeatedly.
+func (r *Registry) EnsurePublicKeys() {
+	r.mu.RLock()
+	files := make([]string, 0, len(r.cfg.Keys))
+	for _, key := range r.cfg.Keys {
+		if key.File != "" {
+			files = append(files, key.File)
+		}
+	}
+	r.mu.RUnlock()
+
+	for _, file := range files {
+		privPath := r.KeyPath(file)
+		pubPath := privPath + pubSuffix
+		if _, err := os.Stat(pubPath); err == nil {
+			continue
+		}
+		priv, err := os.ReadFile(privPath)
+		if err != nil {
+			continue
+		}
+		pub, err := config.PublicKeyAuthorized(string(priv))
+		if err != nil {
+			continue
+		}
+		_ = os.WriteFile(pubPath, []byte(pub), 0o644)
+	}
+}
+
 // publicKeyFor returns the stored public key for a managed key file, deriving it
 // from the private key as a fallback when the `.pub` is missing (e.g. a key
 // imported before public materialization existed). Returns "" on any failure.
