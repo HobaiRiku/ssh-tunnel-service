@@ -281,7 +281,8 @@ func loadOptions(home string, console bool) (app.Options, io.Closer, error) {
 	if err != nil {
 		var miss *config.MissingFileError
 		if errors.As(err, &miss) {
-			if err := config.WriteExample(p.Config(), p.FileMode()); err != nil {
+			listen := config.PickAvailableListen(config.DefaultHTTPListen)
+			if err := config.WriteExampleListening(p.Config(), p.FileMode(), listen); err != nil {
 				return app.Options{}, nil, fmt.Errorf("init config at %s: %w", miss.Path, err)
 			}
 			cfg, err = config.LoadWithDefaults(p.Config(), p.KnownHosts())
