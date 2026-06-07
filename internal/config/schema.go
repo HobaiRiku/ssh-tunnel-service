@@ -48,6 +48,10 @@ type SSHKey struct {
 	Name        string `yaml:"name"        json:"name"`
 	File        string `yaml:"file"        json:"file"`
 	Description string `yaml:"description" json:"description,omitempty"`
+	// Public is the derived OpenSSH public key (authorized_keys line). It is
+	// never persisted to config.yaml (yaml:"-"); the registry populates it on
+	// read from the managed `<file>.pub` so callers can copy it to target hosts.
+	Public string `yaml:"-" json:"public_key,omitempty"`
 }
 
 // Remote is a reusable SSH target server definition, keyed by its unique Name.

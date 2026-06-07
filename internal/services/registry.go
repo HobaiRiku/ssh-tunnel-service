@@ -55,6 +55,9 @@ func (r *Registry) ListKeys() []config.SSHKey {
 	defer r.mu.RUnlock()
 	out := make([]config.SSHKey, len(r.cfg.Keys))
 	copy(out, r.cfg.Keys)
+	for i := range out {
+		out[i].Public = r.publicKeyFor(out[i].File)
+	}
 	return out
 }
 
@@ -63,6 +66,7 @@ func (r *Registry) GetKey(name string) (config.SSHKey, error) {
 	defer r.mu.RUnlock()
 	for _, key := range r.cfg.Keys {
 		if key.Name == name {
+			key.Public = r.publicKeyFor(key.File)
 			return key, nil
 		}
 	}
@@ -157,6 +161,9 @@ func (r *Registry) DeleteKey(name string) error {
 			if key.File != "" {
 				if err := os.Remove(r.KeyPath(key.File)); err != nil && !os.IsNotExist(err) {
 					return fmt.Errorf("remove key file: %w", err)
+				}
+				if err := os.Remove(r.KeyPath(key.File) + pubSuffix); err != nil && !os.IsNotExist(err) {
+					return fmt.Errorf("remove public key file: %w", err)
 				}
 			}
 			return nil
@@ -594,6 +601,18 @@ func (r *Registry) prepareKey(existing config.SSHKey, input SSHKeyInput) (config
 	if err := os.WriteFile(newFilePath, content, r.paths.FileMode()); err != nil {
 		return config.SSHKey{}, "", "", fmt.Errorf("write key file %s: %w", newFilePath, err)
 	}
+	// Materialize the public key alongside the private one so users can copy it
+	// to a server's authorized_keys. Public keys are not secret, but the keys
+	// directory is already 0700 so a 0644 file is still only owner-visible.
+	pub, err := config.PublicKeyAuthorized(privateKey)
+	if err != nil {
+		os.Remove(newFilePath)
+		return config.SSHKey{}, "", "", fmt.Errorf("key %q: %w", name, err)
+	}
+	if err := os.WriteFile(newFilePath+pubSuffix, []byte(pub), 0o644); err != nil {
+		os.Remove(newFilePath)
+		return config.SSHKey{}, "", "", fmt.Errorf("write public key file %s: %w", newFilePath+pubSuffix, err)
+	}
 	key.File = fileName
 	oldFile := ""
 	if existing.File != "" && existing.File != fileName {
@@ -601,6 +620,9 @@ func (r *Registry) prepareKey(existing config.SSHKey, input SSHKeyInput) (config
 	}
 	return key, oldFile, newFilePath, nil
 }
+
+// pubSuffix is appended to a managed private key file to name its public key.
+const pubSuffix = ".pub"
 
 func (r *Registry) finalizeKeyMaterial(oldFile, newFilePath string) error {
 	if newFilePath != "" {
@@ -612,8 +634,33 @@ func (r *Registry) finalizeKeyMaterial(oldFile, newFilePath string) error {
 		if err := os.Remove(oldFile); err != nil && !os.IsNotExist(err) {
 			return fmt.Errorf("remove old key file %s: %w", oldFile, err)
 		}
+		if err := os.Remove(oldFile + pubSuffix); err != nil && !os.IsNotExist(err) {
+			return fmt.Errorf("remove old public key file %s: %w", oldFile+pubSuffix, err)
+		}
 	}
 	return nil
+}
+
+// publicKeyFor returns the stored public key for a managed key file, deriving it
+// from the private key as a fallback when the `.pub` is missing (e.g. a key
+// imported before public materialization existed). Returns "" on any failure.
+func (r *Registry) publicKeyFor(file string) string {
+	if file == "" {
+		return ""
+	}
+	privPath := r.KeyPath(file)
+	if data, err := os.ReadFile(privPath + pubSuffix); err == nil {
+		return strings.TrimSpace(string(data))
+	}
+	priv, err := os.ReadFile(privPath)
+	if err != nil {
+		return ""
+	}
+	pub, err := config.PublicKeyAuthorized(string(priv))
+	if err != nil {
+		return ""
+	}
+	return strings.TrimSpace(pub)
 }
 
 func pickKeyFileName(name, requested, sourcePath, existing string) (string, error) {

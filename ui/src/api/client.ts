@@ -5,6 +5,7 @@ export interface SSHKey {
   name: string
   file: string
   description: string
+  public_key?: string
 }
 
 export interface SSHKeyPayload {

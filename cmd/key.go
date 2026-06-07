@@ -19,8 +19,33 @@ func keyCmd() *cobra.Command {
 		Use:   "key",
 		Short: "Manage stored SSH keys",
 	}
-	root.AddCommand(keyListCmd(), keyAddCmd(), keyUpdateCmd(), keyRmCmd(), keySetDefaultCmd())
+	root.AddCommand(keyListCmd(), keyAddCmd(), keyUpdateCmd(), keyRmCmd(), keySetDefaultCmd(), keyPubCmd())
 	return root
+}
+
+// keyPubCmd prints a managed key's public key (authorized_keys line) so it can
+// be copied to a target server's ~/.ssh/authorized_keys.
+func keyPubCmd() *cobra.Command {
+	return &cobra.Command{
+		Use:   "pub <name>",
+		Short: "Print a key's public key (authorized_keys line)",
+		Args:  cobra.ExactArgs(1),
+		RunE: func(_ *cobra.Command, args []string) error {
+			client, err := newAPIClient(rootFlags.Home)
+			if err != nil {
+				return err
+			}
+			var key config.SSHKey
+			if err := client.request(http.MethodGet, "/api/keys/"+url.PathEscape(args[0]), nil, &key); err != nil {
+				return err
+			}
+			if key.Public == "" {
+				return fmt.Errorf("key %q has no public key available", args[0])
+			}
+			fmt.Println(key.Public)
+			return nil
+		},
+	}
 }
 
 func keySetDefaultCmd() *cobra.Command {

@@ -15,5 +15,7 @@ func binaryDest() string {
 	if base == "" {
 		base = os.TempDir()
 	}
-	return filepath.Join(base, "ssh-tunnel-service", "bin", "ssh-tunnel-service.exe")
+	// Directory keyed by the app (ssh-tunnel-service); the executable is named
+	// after the CLI (ssh-tunnel.exe), not the service registration name.
+	return filepath.Join(base, "ssh-tunnel-service", "bin", "ssh-tunnel.exe")
 }
