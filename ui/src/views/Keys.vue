@@ -26,6 +26,8 @@ const message = useMessage()
 const { t } = useI18n()
 
 const showModal = ref(false)
+const showPublic = ref(false)
+const publicKeyRow = ref<SSHKey | null>(null)
 const editingName = ref<string | null>(null)
 const submitted = ref(false)
 const errors = reactive({ name: '' })
@@ -120,6 +122,21 @@ async function copyPublic(row: SSHKey) {
   else message.error(t('common.copyFailed'))
 }
 
+function openPublic(row: SSHKey) {
+  if (!row.public_key) {
+    message.error(t('keys.noPublicKey'))
+    return
+  }
+  publicKeyRow.value = row
+  showPublic.value = true
+}
+
+const publicCopyCmd = computed(() => {
+  const row = publicKeyRow.value
+  if (!row) return ''
+  return `ssh-tunnel key pub ${row.name} | ssh <user>@<host> 'cat >> ~/.ssh/authorized_keys'`
+})
+
 const columns = computed<DataTableColumns<SSHKey>>(() => [
   { title: t('keys.columns.name'), key: 'name', ellipsis: { tooltip: true } },
   { title: t('keys.columns.file'), key: 'file', render: (row) => h('span', { style: 'font-family:monospace;font-size:12px' }, row.file) },
@@ -132,7 +149,7 @@ const columns = computed<DataTableColumns<SSHKey>>(() => [
       default: () => [
         h(NButton, { size: 'tiny', secondary: true, onClick: () => openEdit(row) }, { default: () => t('common.edit') }),
         h(NButton, { size: 'tiny', tertiary: true, onClick: () => { void copyName(row.name) } }, { default: () => t('common.copyName') }),
-        h(NButton, { size: 'tiny', tertiary: true, disabled: !row.public_key, onClick: () => { void copyPublic(row) } }, { default: () => t('keys.copyPublic') }),
+        h(NButton, { size: 'tiny', tertiary: true, type: 'primary', disabled: !row.public_key, onClick: () => openPublic(row) }, { default: () => t('keys.viewPublic') }),
         h(NPopconfirm, { onPositiveClick: () => doDelete(row.name) }, {
           trigger: () => h(NButton, { size: 'tiny', type: 'error', ghost: true }, { default: () => t('common.delete') }),
           default: () => t('keys.deleteConfirm'),
@@ -167,6 +184,29 @@ onMounted(() => {
         />
       </n-card>
     </div>
+
+    <n-modal v-model:show="showPublic" :title="t('keys.publicTitle')" preset="dialog" style="width:640px">
+      <div v-if="publicKeyRow" class="pub-box">
+        <n-alert type="info" :show-icon="true" :bordered="false">
+          {{ t('keys.publicHint') }}
+        </n-alert>
+        <n-input
+          :value="publicKeyRow.public_key"
+          type="textarea"
+          readonly
+          :autosize="{ minRows: 2, maxRows: 4 }"
+          class="pub-text"
+        />
+        <n-button size="small" type="primary" @click="() => publicKeyRow && copyPublic(publicKeyRow)">
+          {{ t('keys.copyPublic') }}
+        </n-button>
+        <n-text depth="3" style="font-size:12px">{{ t('keys.publicCopyCmd') }}</n-text>
+        <n-input :value="publicCopyCmd" type="textarea" readonly :autosize="{ minRows: 1, maxRows: 3 }" class="pub-text" />
+      </div>
+      <template #action>
+        <n-button @click="showPublic = false">{{ t('common.cancel') }}</n-button>
+      </template>
+    </n-modal>
 
     <n-modal v-model:show="showModal" :title="editingName ? t('keys.editTitle') : t('keys.addTitle')" preset="dialog" style="width:620px">
       <n-form label-placement="left" label-width="110" style="margin-top:8px">
@@ -205,4 +245,6 @@ onMounted(() => {
 .page-title { font-size: 14px; font-weight: 600; color: #1e293b; }
 .page-body { flex: 1; overflow: auto; padding: 20px; }
 .upload-box { display: flex; flex-direction: column; gap: 8px; width: 100%; }
+.pub-box { display: flex; flex-direction: column; gap: 12px; margin-top: 8px; }
+.pub-box :deep(.pub-text textarea) { font-family: monospace; font-size: 12px; }
 </style>

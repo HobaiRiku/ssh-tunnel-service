@@ -160,6 +160,10 @@ const messages = {
       deleteConfirm: 'Delete this key?',
       copyPublic: 'Copy public key',
       noPublicKey: 'No public key available for this key',
+      viewPublic: 'Public key',
+      publicTitle: 'Public key',
+      publicHint: 'Append this line to the target server\'s ~/.ssh/authorized_keys (for the user this remote logs in as) so the service can authenticate with key-based auth.',
+      publicCopyCmd: 'Or run from a machine that can reach it:',
       uploadHint: 'Paste the private key content, or upload an existing key file. The key will be stored under the runtime home directory.',
       replaceHint: 'Leave key material empty to keep the existing stored file unchanged.',
       fields: {
@@ -335,6 +339,10 @@ const messages = {
       deleteConfirm: '确认删除该密钥？',
       copyPublic: '复制公钥',
       noPublicKey: '该密钥没有可用的公钥',
+      viewPublic: '查看公钥',
+      publicTitle: '公钥',
+      publicHint: '将下面这一行追加到目标服务器（该 remote 登录所用用户）的 ~/.ssh/authorized_keys 中，服务即可用密钥认证连接。',
+      publicCopyCmd: '或在能访问它的机器上执行：',
       uploadHint: '可直接粘贴私钥内容，或上传已有私钥文件；密钥会存储在运行配置目录下。',
       replaceHint: '编辑时如果不填写新的密钥内容，将继续使用当前已存储的文件。',
       fields: {
