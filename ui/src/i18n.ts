@@ -158,6 +158,8 @@ const messages = {
       updated: 'Key updated',
       deleted: 'Key deleted',
       deleteConfirm: 'Delete this key?',
+      copyPublic: 'Copy public key',
+      noPublicKey: 'No public key available for this key',
       uploadHint: 'Paste the private key content, or upload an existing key file. The key will be stored under the runtime home directory.',
       replaceHint: 'Leave key material empty to keep the existing stored file unchanged.',
       fields: {
@@ -331,6 +333,8 @@ const messages = {
       updated: '密钥已更新',
       deleted: '密钥已删除',
       deleteConfirm: '确认删除该密钥？',
+      copyPublic: '复制公钥',
+      noPublicKey: '该密钥没有可用的公钥',
       uploadHint: '可直接粘贴私钥内容，或上传已有私钥文件；密钥会存储在运行配置目录下。',
       replaceHint: '编辑时如果不填写新的密钥内容，将继续使用当前已存储的文件。',
       fields: {

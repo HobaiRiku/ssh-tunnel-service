@@ -23,3 +23,14 @@ func GenerateEd25519PrivateKey(comment string) (string, error) {
 	}
 	return string(pem.EncodeToMemory(block)), nil
 }
+
+// PublicKeyAuthorized derives the OpenSSH authorized_keys line (with trailing
+// newline) for a private key in OpenSSH PEM form. It is used to materialize a
+// `.pub` alongside every managed key so users can install it on target servers.
+func PublicKeyAuthorized(privatePEM string) (string, error) {
+	signer, err := ssh.ParsePrivateKey([]byte(privatePEM))
+	if err != nil {
+		return "", fmt.Errorf("derive public key: %w", err)
+	}
+	return string(ssh.MarshalAuthorizedKey(signer.PublicKey())), nil
+}

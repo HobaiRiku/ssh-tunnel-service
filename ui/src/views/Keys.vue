@@ -110,6 +110,16 @@ async function copyName(name: string) {
   else message.error(t('common.copyFailed'))
 }
 
+async function copyPublic(row: SSHKey) {
+  if (!row.public_key) {
+    message.error(t('keys.noPublicKey'))
+    return
+  }
+  const ok = await copyText(row.public_key)
+  if (ok) message.success(t('common.copied'))
+  else message.error(t('common.copyFailed'))
+}
+
 const columns = computed<DataTableColumns<SSHKey>>(() => [
   { title: t('keys.columns.name'), key: 'name', ellipsis: { tooltip: true } },
   { title: t('keys.columns.file'), key: 'file', render: (row) => h('span', { style: 'font-family:monospace;font-size:12px' }, row.file) },
@@ -117,11 +127,12 @@ const columns = computed<DataTableColumns<SSHKey>>(() => [
   {
     title: t('keys.columns.actions'),
     key: 'actions',
-    width: 200,
+    width: 320,
     render: (row) => h(NSpace, { size: 'small' }, {
       default: () => [
         h(NButton, { size: 'tiny', secondary: true, onClick: () => openEdit(row) }, { default: () => t('common.edit') }),
         h(NButton, { size: 'tiny', tertiary: true, onClick: () => { void copyName(row.name) } }, { default: () => t('common.copyName') }),
+        h(NButton, { size: 'tiny', tertiary: true, disabled: !row.public_key, onClick: () => { void copyPublic(row) } }, { default: () => t('keys.copyPublic') }),
         h(NPopconfirm, { onPositiveClick: () => doDelete(row.name) }, {
           trigger: () => h(NButton, { size: 'tiny', type: 'error', ghost: true }, { default: () => t('common.delete') }),
           default: () => t('keys.deleteConfirm'),
