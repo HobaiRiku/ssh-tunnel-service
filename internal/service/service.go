@@ -41,22 +41,31 @@ func NewProgram(home string) *Program {
 	return &Program{home: home, run: Run}
 }
 
-func New(home string) (kservice.Service, *Program, error) {
-	return newWithExe(home, "")
+func New(home string, user bool) (kservice.Service, *Program, error) {
+	return newWithExe(home, "", user)
 }
 
 // newWithExe builds the kardianos service, optionally pinning the unit to a
 // specific executable path (used after install copies the binary to a stable
-// system location). An empty exe means "use the current executable".
+// location). An empty exe means "use the current executable".
 //
-// The service is registered as a system-level service on every platform
-// (systemd system unit, macOS LaunchDaemon, Windows SCM service) so it survives
-// reboots without an interactive login and is independent of the installing
-// user. Privilege elevation for the control commands is handled in cmd/.
-func newWithExe(home, exe string) (kservice.Service, *Program, error) {
+// Scope:
+//   - system (user=false): a system-level service on every platform (systemd
+//     system unit, macOS LaunchDaemon, Windows SCM service) that survives reboots
+//     without an interactive login, independent of the installing user.
+//   - user (user=true): a per-user service (systemd --user unit, macOS
+//     LaunchAgent) that runs as the invoking user without root. Unsupported on
+//     Windows (guarded by checkUserScope).
+//
+// Privilege elevation for the control commands is handled in cmd/.
+func newWithExe(home, exe string, user bool) (kservice.Service, *Program, error) {
 	p, resolved, err := newProgram(home)
 	if err != nil {
 		return nil, nil, err
+	}
+	opt := kservice.KeyValue{}
+	if user {
+		opt["UserService"] = true
 	}
 	cfg := &kservice.Config{
 		Name:             serviceName,
@@ -64,7 +73,7 @@ func newWithExe(home, exe string) (kservice.Service, *Program, error) {
 		Description:      serviceDescription,
 		WorkingDirectory: resolved.Home,
 		EnvVars:          map[string]string{"SSH_TUNNEL_HOME": resolved.Home},
-		Option:           kservice.KeyValue{},
+		Option:           opt,
 		Executable:       exe,
 	}
 	svc, err := kservice.New(p, cfg)
@@ -85,9 +94,20 @@ func newProgram(home string) (*Program, paths.Paths, error) {
 // Interactive reports whether the current process is attached to a user session.
 func Interactive() bool { return kservice.Interactive() }
 
-// RunService enters kardianos/service managed mode.
+// BinaryPath returns the install destination for the executable in the given
+// scope, for display in install summaries.
+func BinaryPath(user bool) (string, error) { return binaryDest(user) }
+
+// UserScopeSupported reports whether user-level services are available on this
+// platform (false on Windows).
+func UserScopeSupported() bool { return checkUserScope(true) == nil }
+
+// RunService enters kardianos/service managed mode. The scope is derived from
+// the privilege of the running process (a systemd --user unit / LaunchAgent runs
+// unprivileged; the system service runs elevated), matching how the home dir is
+// resolved.
 func RunService(home string) error {
-	svc, _, err := New(home)
+	svc, _, err := New(home, !elevate.IsElevated())
 	if err != nil {
 		return err
 	}
@@ -98,66 +118,75 @@ func RunService(home string) error {
 // stable, system-wide location (see binary.go) so the generated unit references
 // that path rather than the caller's working copy, then registers the service
 // pointing at it. The binary copy is rolled back if registration fails.
-func Install(home string) error {
+func Install(home string, user bool) error {
+	if err := checkUserScope(user); err != nil {
+		return err
+	}
 	if err := validateInstallExecutable(); err != nil {
 		return err
 	}
-	installedExe, created, err := installSystemBinary()
+	installedExe, created, err := installSystemBinary(user)
 	if err != nil {
 		return fmt.Errorf("install binary: %w", err)
 	}
-	svc, _, err := newWithExe(home, installedExe)
+	svc, _, err := newWithExe(home, installedExe, user)
 	if err != nil {
-		rollbackBinary(installedExe, created)
+		rollbackBinary(installedExe, created, user)
 		return err
 	}
-	darwinBootout()
+	darwinBootout(user)
 	if err := svc.Install(); err != nil {
-		rollbackBinary(installedExe, created)
+		rollbackBinary(installedExe, created, user)
 		return err
 	}
 	if created {
 		fmt.Fprintf(os.Stderr, "ssh-tunnel: binary installed to %s\n", installedExe)
 	}
-	if err := darwinBootstrap(); err != nil {
+	if err := darwinBootstrap(user); err != nil {
 		// darwinBootstrap failed after the OS service was registered — undo
 		// everything so the user can retry from a known-clean state.
 		_ = svc.Uninstall()
-		rollbackBinary(installedExe, created)
+		rollbackBinary(installedExe, created, user)
 		return err
 	}
 	return nil
 }
 
-// Uninstall removes the service registration and the installed system binary.
-func Uninstall(home string) error {
-	svc, _, err := New(home)
+// Uninstall removes the service registration and the installed binary.
+func Uninstall(home string, user bool) error {
+	if err := checkUserScope(user); err != nil {
+		return err
+	}
+	svc, _, err := New(home, user)
 	if err != nil {
 		return err
 	}
-	darwinBootout()
+	darwinBootout(user)
 	if err := svc.Uninstall(); err != nil {
 		return err
 	}
-	return removeSystemBinary()
+	return removeSystemBinary(user)
 }
 
 // rollbackBinary removes a freshly installed binary after a later install step
 // failed, so a retry starts from a clean state. It only removes the binary when
 // created is true — i.e. this invocation wrote it — to avoid deleting an
 // existing binary that was already present before install ran.
-func rollbackBinary(installedExe string, created bool) {
+func rollbackBinary(installedExe string, created, user bool) {
 	if installedExe != "" && created {
-		_ = removeSystemBinary()
+		_ = removeSystemBinary(user)
 	}
 }
 
 // Start requests the OS to start the registered service.
-func Start(home string) error {
-	if started, err := darwinStart(); started {
+func Start(home string, user bool) error {
+	if err := checkUserScope(user); err != nil {
 		return err
 	}
-	svc, _, err := New(home)
+	if started, err := darwinStart(user); started {
+		return err
+	}
+	svc, _, err := New(home, user)
 	if err != nil {
 		return err
 	}
@@ -165,11 +194,14 @@ func Start(home string) error {
 }
 
 // Stop requests the OS to stop the registered service.
-func Stop(home string) error {
-	if stopped, err := darwinStop(); stopped {
+func Stop(home string, user bool) error {
+	if err := checkUserScope(user); err != nil {
 		return err
 	}
-	svc, _, err := New(home)
+	if stopped, err := darwinStop(user); stopped {
+		return err
+	}
+	svc, _, err := New(home, user)
 	if err != nil {
 		return err
 	}
@@ -202,9 +234,10 @@ func validateInstallExecutable() error {
 	return nil
 }
 
-// Status returns the OS service status.
-func Status(home string) (kservice.Status, error) {
-	svc, _, err := New(home)
+// Status returns the OS service status. (The CLI `status` command now reports
+// liveness over the API; this remains for programmatic callers.)
+func Status(home string, user bool) (kservice.Status, error) {
+	svc, _, err := New(home, user)
 	if err != nil {
 		return kservice.StatusUnknown, err
 	}

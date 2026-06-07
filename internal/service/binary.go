@@ -12,7 +12,7 @@ import (
 // copy was created. If the running executable already *is* the destination —
 // resolving symlinks on both sides so the check is reliable — it is a no-op
 // and created is false.
-func installSystemBinary() (dest string, created bool, err error) {
+func installSystemBinary(user bool) (dest string, created bool, err error) {
 	exe, err := os.Executable()
 	if err != nil {
 		return "", false, fmt.Errorf("resolve current executable: %w", err)
@@ -20,7 +20,10 @@ func installSystemBinary() (dest string, created bool, err error) {
 	if real, err := filepath.EvalSymlinks(exe); err == nil {
 		exe = real
 	}
-	dest = binaryDest()
+	dest, err = binaryDest(user)
+	if err != nil {
+		return "", false, err
+	}
 	resolvedDest := dest
 	if real, err := filepath.EvalSymlinks(dest); err == nil {
 		resolvedDest = real
@@ -35,8 +38,11 @@ func installSystemBinary() (dest string, created bool, err error) {
 }
 
 // removeSystemBinary deletes the installed binary if present.
-func removeSystemBinary() error {
-	dest := binaryDest()
+func removeSystemBinary(user bool) error {
+	dest, err := binaryDest(user)
+	if err != nil {
+		return err
+	}
 	if err := os.Remove(dest); err != nil && !os.IsNotExist(err) {
 		return fmt.Errorf("remove %s: %w", dest, err)
 	}

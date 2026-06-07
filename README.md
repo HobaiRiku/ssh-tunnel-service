@@ -130,12 +130,34 @@ same identity as a header badge). `status` reports the attached instance's
 running state, PID, version, and uptime read-only over the API — no elevation
 required.
 
-`install`, `uninstall`, `start`, and `stop` manage a **system-level** service and
-require administrator privileges. Run them directly and the CLI will prompt for
-elevation as needed — `sudo` on Linux/macOS, or a UAC dialog on Windows — so the
-service starts at boot without an interactive login. The binary is copied to a
-stable system location during `install`, so the installed service no longer
-depends on where you ran the command from.
+### System vs. user install
+
+By default `install` registers a **system-level** service (systemd system unit,
+macOS LaunchDaemon, Windows SCM service) that starts at boot without an
+interactive login. `install`, `uninstall`, `start`, and `stop` then require
+administrator privileges — run them directly and the CLI prompts for elevation
+(`sudo` on Linux/macOS, a UAC dialog on Windows).
+
+```bash
+ssh-tunnel install            # system service (prompts for elevation)
+ssh-tunnel install --user     # per-user service (no root)
+```
+
+`install --user` instead registers a **per-user** service (systemd `--user`
+unit, macOS LaunchAgent) that runs as you, needs no root, and uses your normal
+ssh identities (agent / `~/.ssh`) exactly like `ssh-tunnel run`. Pair the
+`--user` flag with `uninstall` / `start` / `stop` to manage it. After install the
+CLI prints where it landed and how to manage it; on Linux, run
+`sudo loginctl enable-linger "$USER"` if you want it to start before you log in.
+**User-level services are not supported on Windows** (the SCM has no per-user
+concept) — use a system install or `ssh-tunnel run`.
+
+During `install` the running executable is copied to a stable location so the
+service no longer depends on where you ran the command from. The copied file is
+named **`ssh-tunnel`** (the CLI name) — `/usr/local/bin/ssh-tunnel` for a system
+install, `~/.local/bin/ssh-tunnel` for `--user` (and
+`%ProgramData%\ssh-tunnel-service\bin\ssh-tunnel.exe` on Windows). The OS service
+itself is registered as `ssh-tunnel-service`.
 
 ### Keys and the system default
 
@@ -145,9 +167,15 @@ its own key store. `install` offers to import private keys from your `~/.ssh`,
 and always generates a managed **system default key** (ed25519). Tunnels whose
 remote binds no explicit key use this default under the system service; you can
 rotate it (`key update`) or point the default at another key
-(`key set-default`), but it cannot be deleted while designated. In a per-user
-`ssh-tunnel run`, unbound tunnels instead fall back to your normal ssh
-identities, exactly like running `ssh` yourself.
+(`key set-default`), but it cannot be deleted while designated. A per-user
+install (or `ssh-tunnel run`) instead falls back to your normal ssh identities
+for unbound tunnels, exactly like running `ssh` yourself.
+
+Every managed key (imported or generated) stores its **public key** alongside
+the private one, so you can install it on a target server. Print it with
+`ssh-tunnel key pub <name>` (or copy it from the web UI / `key list --json`) and
+append it to that server's `~/.ssh/authorized_keys`. Private keys are stored
+`0600` inside the `0700` `keys/` directory.
 
 The "equivalent ssh command" preview deliberately **omits** the managed key, so
 you can copy it into your own session to verify connectivity with your normal
@@ -158,10 +186,10 @@ ssh-tunnel [command]
 
 Commands:
   run         Run the service in the foreground
-  install     Install as a system service
-  uninstall   Remove the system service registration
-  start       Start the installed service
-  stop        Stop the installed service
+  install     Install as a service (--user for a per-user service)
+  uninstall   Remove the service registration (--user)
+  start       Start the installed service (--user)
+  stop        Stop the installed service (--user)
   status      Show the attached instance's status (--json supported)
   tail        Stream the attached instance's log over the API (WebSocket)
   connect     Choose which instance the CLI attaches to (--show / --clear)
@@ -173,11 +201,12 @@ Commands:
     rm        Remove a remote
 
   key         Manage managed SSH private keys
-    list        List managed keys (--json for machine-readable output)
+    list        List managed keys (--json includes the public key)
     add         Add a key from pasted content or an existing file
     update      Update key metadata or replace stored key material
     rm          Remove a key (the system default key cannot be removed)
     set-default Designate a key as the system default for unbound tunnels
+    pub         Print a key's public key (authorized_keys line)
 
   tunnel      Manage SSH tunnel definitions
     list      List tunnels and live state (state + pid from the running service)
