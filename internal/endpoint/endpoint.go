@@ -19,9 +19,9 @@ package endpoint
 import (
 	"encoding/json"
 	"fmt"
+	"net"
 	"os"
 	"path/filepath"
-	"strings"
 
 	"ssh-tunnel-service/internal/elevate"
 )
@@ -86,7 +86,16 @@ func Write(addr, home string) (string, error) {
 // Remove deletes the current scope's endpoint file. Safe to call if absent.
 func Remove() {
 	if dir, err := scopeDir(CurrentScope()); err == nil {
-		os.Remove(filepath.Join(dir, fileName))
+		path := filepath.Join(dir, fileName)
+		data, err := os.ReadFile(path)
+		if err != nil {
+			return
+		}
+		var info Info
+		if json.Unmarshal(data, &info) != nil || info.PID != os.Getpid() {
+			return
+		}
+		os.Remove(path)
 	}
 }
 
@@ -127,13 +136,13 @@ func read(scope Scope) (Info, bool) {
 // normalizeAddr rewrites a wildcard bind address to loopback so the CLI (always
 // a loopback client) can connect and pass the /api/bootstrap origin check.
 func normalizeAddr(addr string) string {
-	host, port, found := strings.Cut(addr, ":")
-	if !found {
+	host, port, err := net.SplitHostPort(addr)
+	if err != nil {
 		return addr
 	}
 	switch host {
-	case "", "0.0.0.0", "::", "[::]":
-		return "127.0.0.1:" + port
+	case "", "0.0.0.0", "::":
+		return net.JoinHostPort("127.0.0.1", port)
 	}
 	return addr
 }

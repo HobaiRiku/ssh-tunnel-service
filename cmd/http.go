@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"net"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -246,13 +247,13 @@ func (a *apiClient) streamLogs(ctx context.Context, lines int, follow bool, out 
 // normalizeListen rewrites a wildcard bind address to loopback so the CLI can
 // connect and satisfy the bootstrap origin check.
 func normalizeListen(addr string) string {
-	host, port, found := strings.Cut(addr, ":")
-	if !found {
+	host, port, err := net.SplitHostPort(addr)
+	if err != nil {
 		return addr
 	}
 	switch host {
-	case "", "0.0.0.0", "::", "[::]":
-		return "127.0.0.1:" + port
+	case "", "0.0.0.0", "::":
+		return net.JoinHostPort("127.0.0.1", port)
 	}
 	return addr
 }

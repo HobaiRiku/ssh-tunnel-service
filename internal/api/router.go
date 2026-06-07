@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"log/slog"
+	"net"
 	"net/http"
 	"os"
 	"strings"
@@ -46,8 +47,7 @@ func NewRouter(opts Options) *gin.Engine {
 
 	r.GET("/api/health", func(c *gin.Context) { c.JSON(http.StatusOK, gin.H{"ok": true}) })
 	r.GET("/api/bootstrap", func(c *gin.Context) {
-		ip := c.ClientIP()
-		if ip != "127.0.0.1" && ip != "::1" {
+		if !isLoopbackPeer(c.Request.RemoteAddr) {
 			c.AbortWithStatusJSON(http.StatusForbidden, apiError(errors.New("forbidden")))
 			return
 		}
@@ -88,6 +88,18 @@ func NewRouter(opts Options) *gin.Engine {
 	tunnels.POST("/:name/restart", restartTunnel(opts.Manager))
 
 	return r
+}
+
+// isLoopbackPeer checks the actual TCP peer address, deliberately ignoring
+// proxy headers. /api/bootstrap returns the API token, so a non-loopback client
+// must not be able to spoof X-Forwarded-For to bypass the local-only gate.
+func isLoopbackPeer(remoteAddr string) bool {
+	host, _, err := net.SplitHostPort(remoteAddr)
+	if err != nil {
+		host = remoteAddr
+	}
+	ip := net.ParseIP(host)
+	return ip != nil && ip.IsLoopback()
 }
 
 // instanceInfo reports this instance's identity for the CLI banner/status and

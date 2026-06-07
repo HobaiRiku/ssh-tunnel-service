@@ -125,6 +125,9 @@ func Install(home string, user bool) error {
 	if err := validateInstallExecutable(); err != nil {
 		return err
 	}
+	if err := ensureInstallHome(home); err != nil {
+		return err
+	}
 	installedExe, created, err := installSystemBinary(user)
 	if err != nil {
 		return fmt.Errorf("install binary: %w", err)
@@ -148,6 +151,17 @@ func Install(home string, user bool) error {
 		_ = svc.Uninstall()
 		rollbackBinary(installedExe, created, user)
 		return err
+	}
+	return nil
+}
+
+func ensureInstallHome(home string) error {
+	p, err := paths.Resolve(home)
+	if err != nil {
+		return err
+	}
+	if err := p.EnsureTree(); err != nil {
+		return fmt.Errorf("prepare home %s: %w", p.Home, err)
 	}
 	return nil
 }
