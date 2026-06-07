@@ -44,6 +44,10 @@ func Run(ctx context.Context, opts Options) error {
 	mgr := services.NewManager(ctx, reg, rt, opts.Logger.With("component", "manager"), opts.SystemService)
 	reg.SetManager(mgr)
 
+	// Backfill `.pub` files for any managed key created before public-key
+	// materialization existed, so the web UI / `key pub` can surface them.
+	reg.EnsurePublicKeys()
+
 	// As a system service, guarantee the managed default key exists before any
 	// unbound tunnel tries to use it.
 	if opts.SystemService {
