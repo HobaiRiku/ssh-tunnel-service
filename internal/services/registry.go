@@ -201,7 +201,7 @@ func (r *Registry) EnsureSystemDefaultKey() (string, error) {
 
 	// Generate material outside the lock; AddKey re-locks and persists.
 	name := r.uniqueDefaultKeyName()
-	priv, err := config.GenerateEd25519PrivateKey("ssh-tunnel-service system default")
+	priv, err := config.GenerateEd25519PrivateKey(config.KeyComment())
 	if err != nil {
 		return "", err
 	}
@@ -641,11 +641,13 @@ func (r *Registry) finalizeKeyMaterial(oldFile, newFilePath string) error {
 	return nil
 }
 
-// EnsurePublicKeys backfills a `.pub` file next to every managed private key
-// that is missing one (e.g. keys created before public-key materialization
-// existed). It derives the public key from the private one and writes it 0644.
-// Missing or unreadable private keys and derivation failures are skipped so a
-// single bad key never blocks startup. Safe to call repeatedly.
+// EnsurePublicKeys materializes a `.pub` file next to every managed private key,
+// (re)writing it when it is missing or its content no longer matches the freshly
+// derived authorized_keys line — this both backfills keys created before public
+// materialization existed and refreshes the embedded comment
+// ("ssh-tunnel-service@<host>") on keys written by older versions. It writes
+// 0644. Missing or unreadable private keys and derivation failures are skipped
+// so a single bad key never blocks startup. Safe to call repeatedly.
 func (r *Registry) EnsurePublicKeys() {
 	r.mu.RLock()
 	files := make([]string, 0, len(r.cfg.Keys))
@@ -659,15 +661,15 @@ func (r *Registry) EnsurePublicKeys() {
 	for _, file := range files {
 		privPath := r.KeyPath(file)
 		pubPath := privPath + pubSuffix
-		if _, err := os.Stat(pubPath); err == nil {
-			continue
-		}
 		priv, err := os.ReadFile(privPath)
 		if err != nil {
 			continue
 		}
 		pub, err := config.PublicKeyAuthorized(string(priv))
 		if err != nil {
+			continue
+		}
+		if existing, err := os.ReadFile(pubPath); err == nil && string(existing) == pub {
 			continue
 		}
 		_ = os.WriteFile(pubPath, []byte(pub), 0o644)
