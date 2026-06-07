@@ -100,7 +100,8 @@ func loadConfigForCLI(home string) (*config.Config, paths.Paths, error) {
 	if err != nil {
 		var miss *config.MissingFileError
 		if errors.As(err, &miss) {
-			if err := config.WriteExample(p.Config(), p.FileMode()); err != nil {
+			listen := config.PickAvailableListen(config.DefaultHTTPListen)
+			if err := config.WriteExampleListening(p.Config(), p.FileMode(), listen); err != nil {
 				return nil, p, err
 			}
 			cfg, err = config.LoadWithDefaults(p.Config(), p.KnownHosts())

@@ -1,6 +1,9 @@
 package config
 
-import "os"
+import (
+	"os"
+	"strings"
+)
 
 const exampleYAML = `# ssh-tunnel-service configuration
 #
@@ -34,7 +37,17 @@ remotes: []
 tunnels: []
 `
 
-// WriteExample writes the annotated example config to path with the given mode.
+// WriteExample writes the annotated example config to path with the given mode,
+// binding the management API to DefaultHTTPListen.
 func WriteExample(path string, mode os.FileMode) error {
-	return WriteRaw(path, []byte(exampleYAML), mode)
+	return WriteExampleListening(path, mode, DefaultHTTPListen)
+}
+
+// WriteExampleListening writes the annotated example config to path, binding
+// the management API to listen instead of the default address. Used to seed a
+// fresh install with a port that doesn't collide with another instance already
+// running on the host (see PickAvailableListen).
+func WriteExampleListening(path string, mode os.FileMode, listen string) error {
+	yaml := strings.Replace(exampleYAML, `"`+DefaultHTTPListen+`"`, `"`+listen+`"`, 1)
+	return WriteRaw(path, []byte(yaml), mode)
 }

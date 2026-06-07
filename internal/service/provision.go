@@ -33,7 +33,8 @@ func Provision(home string, importKeyPaths []string) error {
 		if !errors.As(err, &miss) {
 			return err
 		}
-		if err := config.WriteExample(p.Config(), p.FileMode()); err != nil {
+		listen := config.PickAvailableListen(config.DefaultHTTPListen)
+		if err := config.WriteExampleListening(p.Config(), p.FileMode(), listen); err != nil {
 			return fmt.Errorf("init config at %s: %w", p.Config(), err)
 		}
 		if cfg, err = config.LoadWithDefaults(p.Config(), p.KnownHosts()); err != nil {
