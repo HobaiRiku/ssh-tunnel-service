@@ -1,6 +1,8 @@
 package endpoint
 
 import (
+	"encoding/json"
+	"os"
 	"testing"
 )
 
@@ -9,6 +11,8 @@ func TestNormalizeAddr(t *testing.T) {
 		"127.0.0.1:2222": "127.0.0.1:2222",
 		"0.0.0.0:2222":   "127.0.0.1:2222",
 		":2222":          "127.0.0.1:2222",
+		"[::]:2222":      "127.0.0.1:2222",
+		"[::1]:2222":     "[::1]:2222",
 		"192.168.1.5:80": "192.168.1.5:80",
 		"noport":         "noport",
 	}
@@ -61,5 +65,44 @@ func TestWriteDiscoverRoundtrip(t *testing.T) {
 	Remove()
 	if len(Discover()) != 0 {
 		t.Error("Discover still returns an instance after Remove")
+	}
+}
+
+func TestRemoveDoesNotDeleteEndpointOwnedByAnotherProcess(t *testing.T) {
+	tmp := t.TempDir()
+	t.Setenv("XDG_RUNTIME_DIR", tmp)
+	t.Setenv("HOME", tmp)
+	t.Setenv("USERPROFILE", tmp)
+	t.Setenv("TEMP", tmp)
+	t.Setenv("TMP", tmp)
+
+	path, err := Write("127.0.0.1:2222", "/tmp/old")
+	if err != nil {
+		t.Fatalf("Write: %v", err)
+	}
+	t.Cleanup(func() { _ = os.Remove(path) })
+
+	foreign := Info{
+		Address: "127.0.0.1:3333",
+		Home:    "/tmp/new",
+		PID:     os.Getpid() + 1,
+		Scope:   CurrentScope(),
+	}
+	data, err := json.Marshal(foreign)
+	if err != nil {
+		t.Fatalf("Marshal: %v", err)
+	}
+	if err := os.WriteFile(path, data, 0o644); err != nil {
+		t.Fatalf("overwrite endpoint: %v", err)
+	}
+
+	Remove()
+
+	if _, err := os.Stat(path); err != nil {
+		t.Fatalf("expected foreign endpoint to remain, stat: %v", err)
+	}
+	got := Discover()
+	if len(got) == 0 || got[0].Address != foreign.Address {
+		t.Fatalf("expected discovery to keep foreign endpoint, got %+v", got)
 	}
 }
