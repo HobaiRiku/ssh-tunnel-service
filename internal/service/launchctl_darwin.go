@@ -2,6 +2,7 @@ package service
 
 import (
 	"fmt"
+	"os"
 	"os/exec"
 	"path/filepath"
 	"strings"
@@ -13,63 +14,76 @@ import (
 // use the modern bootstrap/bootout/kickstart API so install is self-healing and
 // start/stop don't fail on cache mismatches.
 //
-// The service is a system-level LaunchDaemon (not a per-user LaunchAgent): it
-// lives in /Library/LaunchDaemons and is managed in the `system` domain, so it
-// starts at boot without requiring an interactive login. Every operation here
-// therefore requires root, which the elevated control commands guarantee.
+// Two scopes are supported:
+//
+//   - system (default): a LaunchDaemon in /Library/LaunchDaemons, managed in the
+//     `system` domain, starting at boot without an interactive login. Requires
+//     root, which the elevated control commands guarantee.
+//   - user (--user): a LaunchAgent in ~/Library/LaunchAgents, managed in the
+//     `gui/<uid>` domain. Runs as the logged-in user, no root required.
 
-func darwinDomain() string {
+func darwinDomain(user bool) string {
+	if user {
+		return fmt.Sprintf("gui/%d", os.Getuid())
+	}
 	return "system"
 }
 
-func darwinServiceTarget() string {
-	return fmt.Sprintf("%s/%s", darwinDomain(), serviceName)
+func darwinServiceTarget(user bool) string {
+	return fmt.Sprintf("%s/%s", darwinDomain(user), serviceName)
 }
 
-func darwinPlistPath() (string, error) {
+func darwinPlistPath(user bool) (string, error) {
+	if user {
+		home, err := os.UserHomeDir()
+		if err != nil || home == "" {
+			return "", fmt.Errorf("resolve user home for LaunchAgent: %w", err)
+		}
+		return filepath.Join(home, "Library", "LaunchAgents", serviceName+".plist"), nil
+	}
 	return filepath.Join("/Library/LaunchDaemons", serviceName+".plist"), nil
 }
 
-func darwinBootout() {
-	plist, err := darwinPlistPath()
+func darwinBootout(user bool) {
+	plist, err := darwinPlistPath(user)
 	if err == nil {
-		_, _ = runLaunchctl("bootout", darwinDomain(), plist)
+		_, _ = runLaunchctl("bootout", darwinDomain(user), plist)
 	}
-	_, _ = runLaunchctl("bootout", darwinServiceTarget())
+	_, _ = runLaunchctl("bootout", darwinServiceTarget(user))
 }
 
-func darwinBootstrap() error {
-	plist, err := darwinPlistPath()
+func darwinBootstrap(user bool) error {
+	plist, err := darwinPlistPath(user)
 	if err != nil {
 		return fmt.Errorf("locate plist: %w", err)
 	}
-	out, err := exec.Command("launchctl", "bootstrap", darwinDomain(), plist).CombinedOutput()
+	out, err := exec.Command("launchctl", "bootstrap", darwinDomain(user), plist).CombinedOutput()
 	if err != nil {
 		return fmt.Errorf("launchctl bootstrap: %s: %w", strings.TrimSpace(string(out)), err)
 	}
 	return nil
 }
 
-func darwinStart() (bool, error) {
-	loaded, err := darwinServiceLoaded()
+func darwinStart(user bool) (bool, error) {
+	loaded, err := darwinServiceLoaded(user)
 	if err != nil {
 		return true, err
 	}
 	if !loaded {
-		return true, darwinBootstrap()
+		return true, darwinBootstrap(user)
 	}
-	if _, err := runLaunchctl("kickstart", "-k", darwinServiceTarget()); err != nil {
+	if _, err := runLaunchctl("kickstart", "-k", darwinServiceTarget(user)); err != nil {
 		return true, err
 	}
 	return true, nil
 }
 
-func darwinStop() (bool, error) {
-	plist, err := darwinPlistPath()
+func darwinStop(user bool) (bool, error) {
+	plist, err := darwinPlistPath(user)
 	if err != nil {
 		return true, fmt.Errorf("locate plist: %w", err)
 	}
-	if _, err := runLaunchctl("bootout", darwinDomain(), plist); err != nil {
+	if _, err := runLaunchctl("bootout", darwinDomain(user), plist); err != nil {
 		if isLaunchctlNotFound(err) {
 			return true, nil
 		}
@@ -78,8 +92,8 @@ func darwinStop() (bool, error) {
 	return true, nil
 }
 
-func darwinServiceLoaded() (bool, error) {
-	_, err := runLaunchctl("print", darwinServiceTarget())
+func darwinServiceLoaded(user bool) (bool, error) {
+	_, err := runLaunchctl("print", darwinServiceTarget(user))
 	if err == nil {
 		return true, nil
 	}
