@@ -201,7 +201,7 @@ onMounted(() => {
           {{ t('keys.copyPublic') }}
         </n-button>
         <n-text depth="3" style="font-size:12px">{{ t('keys.publicCopyCmd') }}</n-text>
-        <n-input :value="publicCopyCmd" type="textarea" readonly :autosize="{ minRows: 1, maxRows: 3 }" class="pub-text" />
+        <n-input :value="publicCopyCmd" type="textarea" readonly :autosize="{ minRows: 3, maxRows: 6 }" class="pub-text" />
       </div>
       <template #action>
         <n-button @click="showPublic = false">{{ t('common.cancel') }}</n-button>
