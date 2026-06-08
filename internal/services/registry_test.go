@@ -1,7 +1,11 @@
 package services
 
 import (
+	"os"
+	"strings"
 	"testing"
+
+	"golang.org/x/crypto/ssh"
 
 	"ssh-tunnel-service/internal/config"
 	"ssh-tunnel-service/internal/paths"
@@ -64,6 +68,32 @@ func TestAddKeyRejectsWhitespaceName(t *testing.T) {
 	reg := newTestRegistry(t)
 	if err := reg.AddKey(SSHKeyInput{Name: " bad ", PrivateKey: "x"}); err == nil {
 		t.Fatal("expected key name with surrounding whitespace to be rejected")
+	}
+}
+
+// TestAddKeyWritesTrailingNewline guards against regressing the OpenSSH
+// "invalid format" bug: TrimSpace on the imported material strips the final
+// newline, but the written private key file must keep one after its
+// "-----END ... PRIVATE KEY-----" footer or ssh refuses to load it.
+func TestAddKeyWritesTrailingNewline(t *testing.T) {
+	reg, _ := newEmptyRegistry(t)
+	// Simulate an import where the source already lacks a trailing newline.
+	priv, err := config.GenerateEd25519PrivateKey("test@host")
+	if err != nil {
+		t.Fatalf("GenerateEd25519PrivateKey: %v", err)
+	}
+	if err := reg.AddKey(SSHKeyInput{Name: "imported", PrivateKey: strings.TrimRight(priv, "\n")}); err != nil {
+		t.Fatalf("AddKey: %v", err)
+	}
+	data, err := os.ReadFile(reg.KeyPath("imported"))
+	if err != nil {
+		t.Fatalf("ReadFile: %v", err)
+	}
+	if !strings.HasSuffix(string(data), "-----END OPENSSH PRIVATE KEY-----\n") {
+		t.Fatalf("private key file must end with the footer + newline, got %q", data[max(0, len(data)-40):])
+	}
+	if _, err := ssh.ParseRawPrivateKey(data); err != nil {
+		t.Fatalf("written key must be loadable by ssh: %v", err)
 	}
 }
 

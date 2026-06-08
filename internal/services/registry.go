@@ -589,10 +589,14 @@ func (r *Registry) prepareKey(existing config.SSHKey, input SSHKeyInput) (config
 		return key, "", "", nil
 	}
 
-	content := []byte(privateKey)
-	if _, err := ssh.ParseRawPrivateKey(content); err != nil {
+	if _, err := ssh.ParseRawPrivateKey([]byte(privateKey)); err != nil {
 		return config.SSHKey{}, "", "", fmt.Errorf("key %q: private_key is not a valid SSH private key: %w", name, err)
 	}
+	// OpenSSH refuses a private key file that lacks a trailing newline after the
+	// "-----END ... PRIVATE KEY-----" footer ("invalid format"). TrimSpace above
+	// strips it, so re-append exactly one before writing — this covers both
+	// imported keys and the generated system default, on every platform.
+	content := []byte(privateKey + "\n")
 	fileName, err := pickKeyFileName(name, input.FileName, sourcePath, existing.File)
 	if err != nil {
 		return config.SSHKey{}, "", "", err
