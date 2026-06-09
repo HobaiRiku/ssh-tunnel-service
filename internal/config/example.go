@@ -24,8 +24,13 @@ const exampleYAML = `# ssh-tunnel-service configuration
 
 app:
   http_listen: "127.0.0.1:2222"   # management API + Web UI
-  log_level: info                  # debug | info | warn | error
-  log_console: false
+  # The log level is fixed at "info" and is not configurable.
+  log_console: false               # also mirror logs to stderr (foreground runs)
+  # Log file rotation / retention (the active log is <SSH_TUNNEL_HOME>/logs/):
+  log_max_size_mb: 20              # rotate the log once it reaches this size
+  log_max_backups: 10              # number of rotated files to keep
+  log_max_age_days: 14             # days to preserve rotated files before deleting
+  log_compress: false              # gzip rotated files
   ssh_host_key_policy: accept-new  # accept-new | strict | insecure
   # ssh_known_hosts_file defaults to <SSH_TUNNEL_HOME>/known_hosts when empty
   # system_default_key is set automatically on first system-service start

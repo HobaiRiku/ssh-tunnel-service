@@ -287,6 +287,24 @@ remotes:
 
 If a remote does **not** set `key`, the service keeps using the normal system SSH behaviour (agent, default identity files, and ssh config resolution).
 
+### Logging
+
+The service writes a JSON log to `logs/ssh-tunnel-service.log` in the data root.
+The **log level is fixed at `info`** and is not configurable. The file is rotated
+automatically; the rotation and retention behaviour is configurable under `app:`:
+
+```yaml
+app:
+  log_console: false      # also mirror logs to stderr (foreground runs)
+  log_max_size_mb: 20     # rotate the log once it reaches this size (MB)
+  log_max_backups: 10     # number of rotated files to keep
+  log_max_age_days: 14    # days to preserve rotated files before deleting them
+  log_compress: false     # gzip rotated files
+```
+
+Any field left unset (or `0`) falls back to the default shown above. Tail the
+live log from any machine that can reach the service with `ssh-tunnel tail`.
+
 ### Auto-start
 
 A tunnel with `auto_start: true` is **supervised**: it starts immediately when

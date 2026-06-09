@@ -24,14 +24,20 @@ const (
 )
 
 // AppConfig covers the management HTTP API + Web UI.
+//
+// The log level is intentionally not configurable: the service always logs at
+// "info". Only log destination (console mirror) and rotation/retention are
+// exposed.
 type AppConfig struct {
-	HTTPListen       string           `yaml:"http_listen"          json:"http_listen"`
-	LogLevel         string           `yaml:"log_level"            json:"log_level"`
-	LogConsole       bool             `yaml:"log_console"          json:"log_console"`
-	LogMaxSizeMB     int              `yaml:"log_max_size_mb"      json:"log_max_size_mb"`
-	LogMaxBackups    int              `yaml:"log_max_backups"      json:"log_max_backups"`
-	LogMaxAgeDays    int              `yaml:"log_max_age_days"     json:"log_max_age_days"`
-	LogCompress      bool             `yaml:"log_compress"         json:"log_compress"`
+	HTTPListen string `yaml:"http_listen"          json:"http_listen"`
+	LogConsole bool   `yaml:"log_console"          json:"log_console"`
+	// Log rotation / retention (handled by lumberjack). Zero means "use the
+	// built-in default" (20 MB / 10 backups / 14 days); ApplyDefaults fills
+	// these so the effective values surface in the API and `config` output.
+	LogMaxSizeMB     int              `yaml:"log_max_size_mb"      json:"log_max_size_mb"`  // rotate after this size
+	LogMaxBackups    int              `yaml:"log_max_backups"      json:"log_max_backups"`  // rotated files to keep
+	LogMaxAgeDays    int              `yaml:"log_max_age_days"     json:"log_max_age_days"` // days to preserve rotated files
+	LogCompress      bool             `yaml:"log_compress"        json:"log_compress"`      // gzip rotated files
 	SSHHostKeyPolicy SSHHostKeyPolicy `yaml:"ssh_host_key_policy"  json:"ssh_host_key_policy"`
 	SSHKnownHosts    string           `yaml:"ssh_known_hosts_file" json:"ssh_known_hosts_file,omitempty"`
 	// SystemDefaultKey names the managed key used by tunnels whose remote binds
