@@ -315,7 +315,8 @@ func loadOptions(home string, console bool) (app.Options, io.Closer, error) {
 	}
 
 	logger, _, closer, err := applog.Init(applog.Options{
-		Level:      cfg.App.LogLevel,
+		// Level is intentionally fixed at info — it is not user-configurable.
+		Level:      "info",
 		File:       p.LogFile(),
 		Console:    console || cfg.App.LogConsole,
 		MaxSizeMB:  cfg.App.LogMaxSizeMB,

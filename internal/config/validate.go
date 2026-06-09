@@ -69,6 +69,16 @@ func Validate(cfg *Config) error {
 		return fmt.Errorf("app.ssh_known_hosts_file must be an absolute path")
 	}
 
+	if cfg.App.LogMaxSizeMB < 0 {
+		return fmt.Errorf("app.log_max_size_mb must not be negative")
+	}
+	if cfg.App.LogMaxBackups < 0 {
+		return fmt.Errorf("app.log_max_backups must not be negative")
+	}
+	if cfg.App.LogMaxAgeDays < 0 {
+		return fmt.Errorf("app.log_max_age_days must not be negative")
+	}
+
 	keyNames := map[string]bool{}
 	for i, key := range cfg.Keys {
 		if err := ValidateName("key", key.Name); err != nil {
@@ -141,13 +151,27 @@ func Validate(cfg *Config) error {
 	return nil
 }
 
+// Default log rotation / retention settings. These mirror the lumberjack
+// fallbacks in internal/log so the effective values are explicit in config.
+const (
+	DefaultLogMaxSizeMB  = 20
+	DefaultLogMaxBackups = 10
+	DefaultLogMaxAgeDays = 14
+)
+
 // ApplyDefaults fills in optional fields with their default values.
 func ApplyDefaults(cfg *Config, defaultKnownHosts string) {
 	if cfg.App.HTTPListen == "" {
 		cfg.App.HTTPListen = DefaultHTTPListen
 	}
-	if cfg.App.LogLevel == "" {
-		cfg.App.LogLevel = "info"
+	if cfg.App.LogMaxSizeMB == 0 {
+		cfg.App.LogMaxSizeMB = DefaultLogMaxSizeMB
+	}
+	if cfg.App.LogMaxBackups == 0 {
+		cfg.App.LogMaxBackups = DefaultLogMaxBackups
+	}
+	if cfg.App.LogMaxAgeDays == 0 {
+		cfg.App.LogMaxAgeDays = DefaultLogMaxAgeDays
 	}
 	if cfg.App.SSHHostKeyPolicy == "" {
 		cfg.App.SSHHostKeyPolicy = SSHHostKeyPolicyAcceptNew
