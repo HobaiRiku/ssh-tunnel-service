@@ -65,6 +65,17 @@ type Paths struct {
 	perm Perm
 }
 
+// perms returns the resolved permission model, falling back to the owner-only
+// private defaults when Paths was constructed directly (zero-value perm, e.g. in
+// tests) rather than via Resolve. A zero Dir is the tell-tale of an unset perm —
+// without this, EnsureTree/FileMode/ConfigMode would yield mode 0000.
+func (p Paths) perms() Perm {
+	if p.perm.Dir == 0 {
+		return privatePerm
+	}
+	return p.perm
+}
+
 // Resolve returns Paths honoring the precedence above. override may be empty.
 func Resolve(override string) (Paths, error) {
 	home, err := pickHome(override)
@@ -101,15 +112,16 @@ func userHome() (string, error) {
 // EnsureTree creates Home, data/, logs/, keys/ with the resolved directory mode
 // (0700 by default; 0755 root:admin for the macOS system service), idempotent.
 func (p Paths) EnsureTree() error {
+	pm := p.perms()
 	for _, d := range []string{p.Home, p.Data(), p.Logs(), p.Keys()} {
-		if err := os.MkdirAll(d, p.perm.Dir); err != nil {
+		if err := os.MkdirAll(d, pm.Dir); err != nil {
 			return fmt.Errorf("mkdir %s: %w", d, err)
 		}
-		if err := os.Chmod(d, p.perm.Dir); err != nil {
+		if err := os.Chmod(d, pm.Dir); err != nil {
 			return fmt.Errorf("chmod %s: %w", d, err)
 		}
-		if p.perm.Group >= 0 {
-			if err := os.Chown(d, -1, p.perm.Group); err != nil {
+		if pm.Group >= 0 {
+			if err := os.Chown(d, -1, pm.Group); err != nil {
 				return fmt.Errorf("chown %s: %w", d, err)
 			}
 		}
@@ -117,8 +129,8 @@ func (p Paths) EnsureTree() error {
 	// Repair an existing config.yaml so admin users can edit it after an upgrade
 	// from the private (0600 owner-only) layout. New configs already land with
 	// the right mode/group via config.WriteRaw inside the group-owned home.
-	if p.perm.Group >= 0 {
-		if err := relaxSharedFile(p.Config(), p.perm.Config, p.perm.Group); err != nil {
+	if pm.Group >= 0 {
+		if err := relaxSharedFile(p.Config(), pm.Config, pm.Group); err != nil {
 			return err
 		}
 	}
@@ -152,8 +164,8 @@ func (p Paths) Token() string      { return filepath.Join(p.Home, fileToken) }
 func (p Paths) LogFile() string    { return filepath.Join(p.Logs(), fileLog) }
 
 // FileMode is the mode for secrets (API token, private keys): always owner-only.
-func (p Paths) FileMode() os.FileMode { return p.perm.Secret }
+func (p Paths) FileMode() os.FileMode { return p.perms().Secret }
 
 // ConfigMode is the mode for config.yaml — relaxed to be admin-group editable on
 // the macOS system service, owner-only elsewhere.
-func (p Paths) ConfigMode() os.FileMode { return p.perm.Config }
+func (p Paths) ConfigMode() os.FileMode { return p.perms().Config }

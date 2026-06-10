@@ -62,6 +62,26 @@ func TestEnsureTreePrivate(t *testing.T) {
 	}
 }
 
+// TestZeroValuePermFallback guards the case where Paths is built directly
+// (bypassing Resolve, as several tests/helpers do): the unset perm must fall
+// back to the owner-only private model rather than mode 0000.
+func TestZeroValuePermFallback(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("POSIX mode bits not meaningful on Windows")
+	}
+	p := Paths{Home: t.TempDir()} // no perm set
+	if got := p.FileMode(); got != privateFileMode {
+		t.Errorf("FileMode = %#o, want %#o", got, privateFileMode)
+	}
+	if got := p.ConfigMode(); got != privateFileMode {
+		t.Errorf("ConfigMode = %#o, want %#o", got, privateFileMode)
+	}
+	if err := p.EnsureTree(); err != nil {
+		t.Fatalf("EnsureTree: %v", err)
+	}
+	assertMode(t, p.Home, 0o700)
+}
+
 // TestEnsureTreeShared mirrors the macOS system-service relaxation: directories
 // land at 0755 and an existing private config.yaml is widened to the config mode
 // so admin-group members can edit it. Group is set to the current gid so the
