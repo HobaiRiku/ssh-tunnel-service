@@ -15,3 +15,7 @@ func platformDefaultHome() (string, error) {
 	}
 	return userHome()
 }
+
+// homePerm keeps the Linux home owner-only; admin access there is mediated by
+// sudo, not a shared group, so there is no equivalent of the macOS relaxation.
+func homePerm(string) Perm { return privatePerm }

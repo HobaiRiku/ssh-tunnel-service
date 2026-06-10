@@ -34,7 +34,7 @@ func Provision(home string, importKeyPaths []string) error {
 			return err
 		}
 		listen := config.PickAvailableListen(config.DefaultHTTPListen)
-		if err := config.WriteExampleListening(p.Config(), p.FileMode(), listen); err != nil {
+		if err := config.WriteExampleListening(p.Config(), p.ConfigMode(), listen); err != nil {
 			return fmt.Errorf("init config at %s: %w", p.Config(), err)
 		}
 		if cfg, err = config.LoadWithDefaults(p.Config(), p.KnownHosts()); err != nil {
