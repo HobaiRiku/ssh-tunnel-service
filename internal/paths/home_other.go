@@ -7,3 +7,6 @@ package paths
 func platformDefaultHome() (string, error) {
 	return userHome()
 }
+
+// homePerm keeps the home owner-only on platforms without a system service model.
+func homePerm(string) Perm { return privatePerm }

@@ -174,8 +174,8 @@ for unbound tunnels, exactly like running `ssh` yourself.
 Every managed key (imported or generated) stores its **public key** alongside
 the private one, so you can install it on a target server. Print it with
 `ssh-tunnel key pub <name>` (or copy it from the web UI / `key list --json`) and
-append it to that server's `~/.ssh/authorized_keys`. Private keys are stored
-`0600` inside the `0700` `keys/` directory.
+append it to that server's `~/.ssh/authorized_keys`. Private keys are always
+stored `0600` (owner-only), regardless of the `keys/` directory mode.
 
 The "equivalent ssh command" preview deliberately **omits** the managed key, so
 you can copy it into your own session to verify connectivity with your normal
@@ -260,6 +260,15 @@ The data root stores `config.yaml` plus:
 - `known_hosts` — managed host key trust store
 - `keys/` — uploaded or pasted private keys
 - `logs/ssh-tunnel-service.log` — service log file
+
+By default the data root is owner-only (`0700` dirs, `0600` files). On
+**macOS** the elevated system service relaxes this so admin users can read and
+edit the service's configuration without `sudo`: the tree is owned `root:admin`
+with `0755` directories and a `0664` `config.yaml`, matching how most
+`/Library/Application Support` data is laid out. The API `token` and private
+`keys/` stay `0600` (owner-only) — admin members obtain the token over the
+loopback `/api/bootstrap`, never off disk. Per-user instances (and Linux /
+Windows) remain fully private.
 
 Every key, remote and tunnel is identified by its unique **`name`** — there is
 no separate `id`. Remotes reference a key by name (`key:`), and tunnels

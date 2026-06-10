@@ -20,3 +20,7 @@ func platformDefaultHome() (string, error) {
 	}
 	return userHome()
 }
+
+// homePerm keeps the Windows home owner-only; POSIX mode/ownership tweaks don't
+// apply there (ACLs govern access instead).
+func homePerm(string) Perm { return privatePerm }

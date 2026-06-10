@@ -733,7 +733,7 @@ func (r *Registry) persist(next *config.Config) error {
 		r.cfg = next
 		return nil
 	}
-	if err := config.Write(r.paths.Config(), next, r.paths.FileMode()); err != nil {
+	if err := config.Write(r.paths.Config(), next, r.paths.ConfigMode()); err != nil {
 		return err
 	}
 	r.cfg = next

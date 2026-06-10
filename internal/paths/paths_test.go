@@ -1,7 +1,9 @@
 package paths
 
 import (
+	"os"
 	"path/filepath"
+	"runtime"
 	"testing"
 )
 
@@ -42,5 +44,54 @@ func TestUserHome(t *testing.T) {
 	want := filepath.Join(home, defaultDirName)
 	if got != want {
 		t.Errorf("userHome = %q, want %q", got, want)
+	}
+}
+
+// TestEnsureTreePrivate confirms the default (owner-only) model creates the tree
+// at 0700 and leaves config.yaml ownership/mode untouched.
+func TestEnsureTreePrivate(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("POSIX mode bits not meaningful on Windows")
+	}
+	p := Paths{Home: t.TempDir(), perm: privatePerm}
+	if err := p.EnsureTree(); err != nil {
+		t.Fatalf("EnsureTree: %v", err)
+	}
+	for _, d := range []string{p.Home, p.Data(), p.Logs(), p.Keys()} {
+		assertMode(t, d, 0o700)
+	}
+}
+
+// TestEnsureTreeShared mirrors the macOS system-service relaxation: directories
+// land at 0755 and an existing private config.yaml is widened to the config mode
+// so admin-group members can edit it. Group is set to the current gid so the
+// chown is permitted without root.
+func TestEnsureTreeShared(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("POSIX mode bits not meaningful on Windows")
+	}
+	home := t.TempDir()
+	// A pre-existing config from the old owner-only layout.
+	if err := os.WriteFile(filepath.Join(home, fileConfig), []byte("app: {}\n"), 0o600); err != nil {
+		t.Fatalf("seed config: %v", err)
+	}
+	p := Paths{Home: home, perm: Perm{Dir: 0o755, Config: 0o664, Secret: 0o600, Group: os.Getgid()}}
+	if err := p.EnsureTree(); err != nil {
+		t.Fatalf("EnsureTree: %v", err)
+	}
+	for _, d := range []string{p.Home, p.Data(), p.Logs(), p.Keys()} {
+		assertMode(t, d, 0o755)
+	}
+	assertMode(t, p.Config(), 0o664)
+}
+
+func assertMode(t *testing.T, path string, want os.FileMode) {
+	t.Helper()
+	info, err := os.Stat(path)
+	if err != nil {
+		t.Fatalf("stat %s: %v", path, err)
+	}
+	if got := info.Mode().Perm(); got != want {
+		t.Errorf("mode %s = %#o, want %#o", path, got, want)
 	}
 }
