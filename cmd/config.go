@@ -112,18 +112,18 @@ func loadConfigForCLI(home string) (*config.Config, paths.Paths, error) {
 			}
 			return cfg, p, nil
 		}
-
-		func resolveConfigPaths(home string) (paths.Paths, error) {
-			c, err := resolveClientForConfig(home)
-			if err != nil {
-				return paths.Paths{}, err
-			}
-			if c != nil && c.home != "" {
-				return paths.Resolve(c.home)
-			}
-			return paths.Resolve(home)
-		}
 		return nil, p, err
 	}
 	return cfg, p, nil
+}
+
+func resolveConfigPaths(home string) (paths.Paths, error) {
+	c, err := resolveClientForConfig(home)
+	if err != nil {
+		return paths.Paths{}, err
+	}
+	if c != nil && c.home != "" {
+		return paths.Resolve(c.home)
+	}
+	return paths.Resolve(home)
 }
