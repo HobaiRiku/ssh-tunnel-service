@@ -1,14 +1,22 @@
 <script setup lang="ts">
 import { NConfigProvider, NMessageProvider, NSelect, darkTheme, useOsTheme } from 'naive-ui'
 import { RouterLink, useRoute } from 'vue-router'
-import { computed, onMounted, ref } from 'vue'
+import { computed, onMounted, ref, watchEffect } from 'vue'
 import { useI18n, type Locale } from '@/i18n'
 import { api, type InstanceInfo } from '@/api/client'
 
 const osTheme = useOsTheme()
-const theme = computed(() => osTheme.value === 'dark' ? darkTheme : null)
+const isDark = computed(() => osTheme.value === 'dark')
+const theme = computed(() => isDark.value ? darkTheme : null)
 const route = useRoute()
 const { locale, setLocale, t } = useI18n()
+
+// Custom (non-naive-ui) elements read theme colors from CSS variables toggled
+// on <html>, so they stay in sync with naive-ui's own dark theme even for
+// teleported content (modals, popovers) that lives outside .app-shell.
+watchEffect(() => {
+  document.documentElement.classList.toggle('dark', isDark.value)
+})
 
 // Instance identity badge: which instance this UI is talking to, mirroring the
 // CLI banner so users always know what they are operating on.
@@ -102,12 +110,110 @@ function switchLocale(next: Locale) {
 </template>
 
 <style>
+:root {
+  --color-bg: #f1f5f9;
+  --color-surface: #ffffff;
+  --color-surface-alt: #f8fafc;
+  --color-surface-hover: #f1f5f9;
+  --color-border: #e2e8f0;
+  --color-border-strong: #cbd5e1;
+  --color-text: #1e293b;
+  --color-text-secondary: #475569;
+  --color-text-tertiary: #64748b;
+  --color-text-muted: #94a3b8;
+  --color-accent: #2563eb;
+  --color-accent-strong: #1d4ed8;
+  --color-accent-bg: #eff6ff;
+  --color-accent-border: #bfdbfe;
+  --color-danger: #dc2626;
+  --color-shadow-soft: rgba(0, 0, 0, 0.06);
+  --color-shadow-medium: rgba(15, 23, 42, 0.14);
+  --color-shadow-strong: rgba(15, 23, 42, 0.18);
+  --color-overlay: rgba(255, 255, 255, 0.85);
+  --color-divider-soft: rgba(15, 23, 42, 0.06);
+
+  --color-tag-blue-bg: #dbeafe;
+  --color-tag-blue-text: #1d4ed8;
+  --color-tag-pink-bg: #fce7f3;
+  --color-tag-pink-text: #9d174d;
+  --color-tag-purple-bg: #ede9fe;
+  --color-tag-purple-text: #6d28d9;
+
+  --color-state-running-bg: #f0fdf4;
+  --color-state-running-border: #22c55e;
+  --color-state-error-bg: #fef2f2;
+  --color-state-error-border: #ef4444;
+  --color-state-stopped-bg: #f8fafc;
+  --color-state-stopped-border: #cbd5e1;
+  --color-state-stopped-dot: #94a3b8;
+
+  --color-node-remote-bg: #eff6ff;
+  --color-node-remote-border: rgba(37, 99, 235, 0.9);
+  --color-node-target-bg: #faf5ff;
+  --color-node-target-border: #7c3aed;
+  --color-node-target-text: #4c1d95;
+  --color-node-target-text-strong: #5b21b6;
+
+  --color-flow-from: #f8fafc;
+  --color-flow-to: #f1f5f9;
+  --color-flow-grid: #e2e8f0;
+}
+
+:root.dark {
+  --color-bg: #0f172a;
+  --color-surface: #1e293b;
+  --color-surface-alt: #253449;
+  --color-surface-hover: #2c3e5c;
+  --color-border: #334155;
+  --color-border-strong: #475569;
+  --color-text: #e2e8f0;
+  --color-text-secondary: #cbd5e1;
+  --color-text-tertiary: #94a3b8;
+  --color-text-muted: #64748b;
+  --color-accent: #3b82f6;
+  --color-accent-strong: #60a5fa;
+  --color-accent-bg: #1e3a5f;
+  --color-accent-border: #2563eb;
+  --color-danger: #f87171;
+  --color-shadow-soft: rgba(0, 0, 0, 0.35);
+  --color-shadow-medium: rgba(0, 0, 0, 0.5);
+  --color-shadow-strong: rgba(0, 0, 0, 0.6);
+  --color-overlay: rgba(30, 41, 59, 0.85);
+  --color-divider-soft: rgba(255, 255, 255, 0.08);
+
+  --color-tag-blue-bg: #1e3a5f;
+  --color-tag-blue-text: #93c5fd;
+  --color-tag-pink-bg: #4a1942;
+  --color-tag-pink-text: #f9a8d4;
+  --color-tag-purple-bg: #3b2e63;
+  --color-tag-purple-text: #c4b5fd;
+
+  --color-state-running-bg: #12261a;
+  --color-state-running-border: #22c55e;
+  --color-state-error-bg: #391414;
+  --color-state-error-border: #ef4444;
+  --color-state-stopped-bg: #1e293b;
+  --color-state-stopped-border: #475569;
+  --color-state-stopped-dot: #94a3b8;
+
+  --color-node-remote-bg: #1e3a5f;
+  --color-node-remote-border: rgba(96, 165, 250, 0.9);
+  --color-node-target-bg: #2e2350;
+  --color-node-target-text: #ddd6fe;
+  --color-node-target-text-strong: #c4b5fd;
+  --color-node-target-border: #a78bfa;
+
+  --color-flow-from: #1a2436;
+  --color-flow-to: #111827;
+  --color-flow-grid: #334155;
+}
+
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 html, body { height: 100%; }
 body {
   font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Inter', sans-serif;
-  background: #f1f5f9;
-  color: #1e293b;
+  background: var(--color-bg);
+  color: var(--color-text);
 }
 
 .app-shell {
@@ -121,9 +227,9 @@ body {
   align-items: center;
   padding: 0 24px;
   height: 52px;
-  background: #fff;
-  border-bottom: 1px solid #e2e8f0;
-  box-shadow: 0 1px 3px rgba(0,0,0,0.06);
+  background: var(--color-surface);
+  border-bottom: 1px solid var(--color-border);
+  box-shadow: 0 1px 3px var(--color-shadow-soft);
   flex-shrink: 0;
   gap: 24px;
 }
@@ -137,7 +243,7 @@ body {
 }
 
 .brand-icon { width: 28px; height: 28px; flex-shrink: 0; }
-.brand-name { font-weight: 700; font-size: 14px; color: #1e293b; letter-spacing: -0.01em; white-space: nowrap; }
+.brand-name { font-weight: 700; font-size: 14px; color: var(--color-text); letter-spacing: -0.01em; white-space: nowrap; }
 
 .header-nav {
   display: flex;
@@ -154,15 +260,15 @@ body {
   height: 52px;
   font-size: 13.5px;
   font-weight: 500;
-  color: #64748b;
+  color: var(--color-text-tertiary);
   text-decoration: none;
   border-bottom: 2px solid transparent;
   transition: color 0.15s, border-color 0.15s;
   white-space: nowrap;
 }
 
-.nav-tab:hover { color: #334155; }
-.nav-tab.active { color: #2563eb; border-bottom-color: #2563eb; }
+.nav-tab:hover { color: var(--color-text-secondary); }
+.nav-tab.active { color: var(--color-accent); border-bottom-color: var(--color-accent); }
 
 .instance-badge {
   display: inline-flex;
@@ -171,9 +277,9 @@ body {
   padding: 3px 10px;
   font-size: 12px;
   font-weight: 600;
-  color: #2563eb;
-  background: #eff6ff;
-  border: 1px solid #bfdbfe;
+  color: var(--color-accent);
+  background: var(--color-accent-bg);
+  border: 1px solid var(--color-accent-border);
   border-radius: 999px;
   white-space: nowrap;
   user-select: none;

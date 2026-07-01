@@ -3,7 +3,7 @@ import { computed, markRaw, nextTick, onBeforeUnmount, reactive, ref, watch } fr
 import { MarkerType, PanOnScrollMode, VueFlow, useVueFlow } from '@vue-flow/core'
 import { Background } from '@vue-flow/background'
 import { Controls } from '@vue-flow/controls'
-import { useMessage } from 'naive-ui'
+import { useMessage, useOsTheme } from 'naive-ui'
 import type { Edge, Node } from '@vue-flow/core'
 import { api, getErrorMessage, type Remote, type TunnelStatus } from '@/api/client'
 import TunnelEdge from '@/components/edges/TunnelEdge.vue'
@@ -32,6 +32,16 @@ const emit = defineEmits<{
 const { viewport, setViewport, dimensions, onInit, onMove } = useVueFlow()
 const { t } = useI18n()
 const message = useMessage()
+
+// VueFlow renders edge/marker colors as raw SVG attributes rather than through
+// the CSS cascade, so they can't pick up the app's --color-* custom properties;
+// resolve concrete hex values from the OS theme instead.
+const osTheme = useOsTheme()
+const isDark = computed(() => osTheme.value === 'dark')
+const flowPalette = computed(() => (isDark.value
+  ? { accent: '#3b82f6', success: '#22c55e', danger: '#ef4444', muted: '#64748b', border: '#475569', borderSoft: '#334155' }
+  : { accent: '#2563eb', success: '#22c55e', danger: '#ef4444', muted: '#94a3b8', border: '#cbd5e1', borderSoft: '#e2e8f0' }
+))
 
 // View state persisted across remounts (table <-> topology toggle, route changes)
 // so returning to the topology keeps the user's zoom / scroll / remote tab.
@@ -200,13 +210,14 @@ const flowEdges = computed<Edge[]>(() => {
     const remoteEndpoint = getRemoteEndpoint(tunnel)
     const localEndpoint = getLocalEndpoint(tunnel)
     const selected = tunnel.name === props.selectedTunnelName
+    const palette = flowPalette.value
     const stroke = selected
-      ? '#2563eb'
+      ? palette.accent
       : tunnel.state === 'running'
-        ? '#22c55e'
+        ? palette.success
         : tunnel.state === 'error'
-          ? '#ef4444'
-          : '#94a3b8'
+          ? palette.danger
+          : palette.muted
 
     // A -R (remote forward) flows from the remote side back to the local
     // target, so the arrow points the opposite way: anchor it at the source
@@ -390,20 +401,20 @@ watch(contentHeight, () => apply())
   <div class="topology-view">
     <div v-if="isEmpty" class="empty-state">
       <svg class="empty-icon" viewBox="0 0 64 64" fill="none">
-        <rect x="4" y="8" width="24" height="16" rx="3" stroke="#cbd5e1" stroke-width="2"/>
-        <circle cx="24" cy="16" r="2" fill="#cbd5e1"/>
-        <rect x="36" y="40" width="24" height="16" rx="3" stroke="#cbd5e1" stroke-width="2"/>
-        <circle cx="56" cy="48" r="2" fill="#cbd5e1"/>
-        <path d="M28 16 Q48 16 48 40" stroke="#e2e8f0" stroke-width="2" fill="none" stroke-dasharray="4 3"/>
+        <rect x="4" y="8" width="24" height="16" rx="3" :stroke="flowPalette.border" stroke-width="2"/>
+        <circle cx="24" cy="16" r="2" :fill="flowPalette.border"/>
+        <rect x="36" y="40" width="24" height="16" rx="3" :stroke="flowPalette.border" stroke-width="2"/>
+        <circle cx="56" cy="48" r="2" :fill="flowPalette.border"/>
+        <path d="M28 16 Q48 16 48 40" :stroke="flowPalette.borderSoft" stroke-width="2" fill="none" stroke-dasharray="4 3"/>
       </svg>
       <p class="empty-title">{{ t('topology.noRemotesTitle') }}</p>
       <p class="empty-sub">{{ t('topology.noRemotesSub') }}</p>
     </div>
     <div v-else-if="!hasTunnels && !props.loading" class="empty-state">
       <svg class="empty-icon" viewBox="0 0 64 64" fill="none">
-        <rect x="6" y="18" width="22" height="12" rx="3" stroke="#cbd5e1" stroke-width="2"/>
-        <rect x="36" y="34" width="22" height="12" rx="3" stroke="#cbd5e1" stroke-width="2"/>
-        <path d="M28 24 L36 40" stroke="#e2e8f0" stroke-width="2" stroke-dasharray="4 3"/>
+        <rect x="6" y="18" width="22" height="12" rx="3" :stroke="flowPalette.border" stroke-width="2"/>
+        <rect x="36" y="34" width="22" height="12" rx="3" :stroke="flowPalette.border" stroke-width="2"/>
+        <path d="M28 24 L36 40" :stroke="flowPalette.borderSoft" stroke-width="2" stroke-dasharray="4 3"/>
       </svg>
       <p class="empty-title">{{ t('topology.noTunnelsTitle') }}</p>
       <p class="empty-sub">{{ t('topology.noTunnelsSub') }}</p>
@@ -452,7 +463,7 @@ watch(contentHeight, () => apply())
         @node-click="handleNodeClick"
         @node-context-menu="onNodeContextMenu"
       >
-        <Background pattern-color="#e2e8f0" :gap="20" />
+        <Background :pattern-color="flowPalette.borderSoft" :gap="20" />
         <Controls :show-fit-view="false" :show-interactive="false" position="bottom-right" />
       </VueFlow>
     </template>
@@ -504,7 +515,7 @@ watch(contentHeight, () => apply())
 }
 
 .remote-tab-scroll::-webkit-scrollbar { height: 6px; }
-.remote-tab-scroll::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 3px; }
+.remote-tab-scroll::-webkit-scrollbar-thumb { background: var(--color-border-strong); border-radius: 3px; }
 
 .remote-tab {
   flex-shrink: 0;
@@ -515,19 +526,19 @@ watch(contentHeight, () => apply())
   padding: 6px 14px;
   font-size: 13px;
   font-weight: 600;
-  color: #475569;
-  background: #f1f5f9;
-  border: 1px solid #e2e8f0;
+  color: var(--color-text-secondary);
+  background: var(--color-bg);
+  border: 1px solid var(--color-border);
   border-radius: 999px;
   cursor: pointer;
   transition: background 0.15s ease, color 0.15s ease, border-color 0.15s ease;
 }
 
-.remote-tab:hover { background: #e2e8f0; }
+.remote-tab:hover { background: var(--color-border); }
 .remote-tab.active {
   color: #fff;
-  background: linear-gradient(135deg, #1d4ed8, #2563eb);
-  border-color: #2563eb;
+  background: linear-gradient(135deg, var(--color-accent-strong), var(--color-accent));
+  border-color: var(--color-accent);
 }
 
 .remote-tab--all {
@@ -540,7 +551,7 @@ watch(contentHeight, () => apply())
   flex: 1;
   min-height: 0;
   width: 100%;
-  background: linear-gradient(180deg, #f8fafc 0%, #f1f5f9 100%);
+  background: linear-gradient(180deg, var(--color-flow-from) 0%, var(--color-flow-to) 100%);
   border-radius: 12px;
 }
 
@@ -552,34 +563,34 @@ watch(contentHeight, () => apply())
   align-items: center;
   justify-content: center;
   gap: 12px;
-  background: linear-gradient(180deg, #f8fafc 0%, #f1f5f9 100%);
+  background: linear-gradient(180deg, var(--color-flow-from) 0%, var(--color-flow-to) 100%);
   border-radius: 12px;
 }
 
 .empty-icon { width: 72px; height: 72px; }
-.empty-title { font-size: 15px; font-weight: 600; color: #64748b; }
-.empty-sub { max-width: 420px; text-align: center; font-size: 13px; color: #94a3b8; }
+.empty-title { font-size: 15px; font-weight: 600; color: var(--color-text-tertiary); }
+.empty-sub { max-width: 420px; text-align: center; font-size: 13px; color: var(--color-text-muted); }
 
 .ctx-menu {
   position: fixed;
   z-index: 9999;
   min-width: 168px;
   padding: 4px;
-  background: #fff;
-  border: 1px solid #e2e8f0;
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
   border-radius: 10px;
-  box-shadow: 0 10px 30px rgba(15, 23, 42, 0.18);
+  box-shadow: 0 10px 30px var(--color-shadow-strong);
 }
 .ctx-menu-title {
   padding: 6px 10px 8px;
   font-size: 11px;
   font-weight: 700;
-  color: #94a3b8;
+  color: var(--color-text-muted);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
   max-width: 240px;
-  border-bottom: 1px solid #f1f5f9;
+  border-bottom: 1px solid var(--color-border);
   margin-bottom: 4px;
 }
 .ctx-menu-item {
@@ -591,8 +602,8 @@ watch(contentHeight, () => apply())
   background: transparent;
   border-radius: 6px;
   font-size: 13px;
-  color: #1e293b;
+  color: var(--color-text);
   cursor: pointer;
 }
-.ctx-menu-item:hover { background: #f1f5f9; }
+.ctx-menu-item:hover { background: var(--color-surface-alt); }
 </style>

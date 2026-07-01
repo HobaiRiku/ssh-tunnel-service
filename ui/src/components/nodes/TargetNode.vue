@@ -30,20 +30,20 @@ defineProps<{
 </template>
 
 <style scoped>
-.target-node { display: inline-flex; align-items: center; background: #faf5ff; border: 1.5px solid #7c3aed; border-radius: 10px; box-shadow: 0 1px 4px rgba(0,0,0,0.08); overflow: visible; cursor: pointer; }
-.target-node.selected { border-color: #2563eb; box-shadow: 0 8px 18px rgba(15, 23, 42, 0.14); }
+.target-node { display: inline-flex; align-items: center; background: var(--color-node-target-bg); border: 1.5px solid var(--color-node-target-border); border-radius: 10px; box-shadow: 0 1px 4px var(--color-shadow-soft); overflow: visible; cursor: pointer; }
+.target-node.selected { border-color: var(--color-accent); box-shadow: 0 8px 18px var(--color-shadow-medium); }
 .target-inner { display: flex; align-items: center; gap: 7px; padding: 10px 14px; }
-.icon { width: 16px; height: 16px; color: #7c3aed; flex-shrink: 0; }
+.icon { width: 16px; height: 16px; color: var(--color-node-target-border); flex-shrink: 0; }
 .addr-block { display: flex; align-items: baseline; gap: 1px; font-family: 'SF Mono', 'Fira Code', monospace; }
-.host { font-size: 11px; color: #4c1d95; font-weight: 500; }
-.sep { font-size: 11px; color: #7c3aed; }
-.port { font-size: 12px; color: #5b21b6; font-weight: 700; }
+.host { font-size: 11px; color: var(--color-node-target-text); font-weight: 500; }
+.sep { font-size: 11px; color: var(--color-node-target-border); }
+.port { font-size: 12px; color: var(--color-node-target-text-strong); font-weight: 700; }
 :deep(.handle-left) {
   width: 10px !important;
   height: 10px !important;
   left: -5px;
-  background: #7c3aed !important;
-  border: 2px solid #fff !important;
+  background: var(--color-node-target-border) !important;
+  border: 2px solid var(--color-surface) !important;
   z-index: 4;
   animation: target-handle-pulse 1.8s ease-out infinite;
 }
