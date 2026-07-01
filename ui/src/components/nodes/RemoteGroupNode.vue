@@ -31,8 +31,8 @@ defineProps<{
 .remote-group {
   width: 100%;
   height: 100%;
-  background: #eff6ff;
-  border: 2px solid rgba(37, 99, 235, 0.9);
+  background: var(--color-node-remote-bg);
+  border: 2px solid var(--color-node-remote-border);
   border-radius: 10px;
   overflow: visible;
 }
@@ -42,7 +42,7 @@ defineProps<{
   align-items: center;
   gap: 8px;
   padding: 8px 12px;
-  background: linear-gradient(135deg, #1d4ed8, #2563eb);
+  background: linear-gradient(135deg, var(--color-accent-strong), var(--color-accent));
   border-radius: 8px 8px 0 0;
   color: white;
   height: 52px;

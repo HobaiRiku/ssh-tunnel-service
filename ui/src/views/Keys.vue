@@ -173,7 +173,7 @@ onMounted(() => {
 
     <div class="page-body">
       <n-alert v-if="keyStore.error" type="error" :title="keyStore.error" style="margin-bottom:16px" />
-      <n-card :bordered="false" style="border-radius:10px;box-shadow:0 1px 6px rgba(0,0,0,0.06)">
+      <n-card :bordered="false" style="border-radius:10px;box-shadow:0 1px 6px var(--color-shadow-soft)">
         <n-data-table
           :columns="columns"
           :data="keyStore.keys"
@@ -241,8 +241,8 @@ onMounted(() => {
 
 <style scoped>
 .page { display: flex; flex-direction: column; height: 100%; }
-.page-toolbar { display: flex; align-items: center; justify-content: space-between; padding: 10px 20px; background: #fff; border-bottom: 1px solid #e2e8f0; flex-shrink: 0; }
-.page-title { font-size: 14px; font-weight: 600; color: #1e293b; }
+.page-toolbar { display: flex; align-items: center; justify-content: space-between; padding: 10px 20px; background: var(--color-surface); border-bottom: 1px solid var(--color-border); flex-shrink: 0; }
+.page-title { font-size: 14px; font-weight: 600; color: var(--color-text); }
 .page-body { flex: 1; overflow: auto; padding: 20px; }
 .upload-box { display: flex; flex-direction: column; gap: 8px; width: 100%; }
 .pub-box { display: flex; flex-direction: column; gap: 12px; margin-top: 8px; }

@@ -19,16 +19,16 @@ const props = defineProps<{
 
 const { t } = useI18n()
 
-const arrowColor = computed(() => (props.data.direction === '-R' ? '#9d174d' : '#1d4ed8'))
+const arrowColor = computed(() => (props.data.direction === '-R' ? 'var(--color-tag-pink-text)' : 'var(--color-tag-blue-text)'))
 
 const stateStyle = computed(() => {
   switch (props.data.state) {
     case 'running':
-      return { bg: '#f0fdf4', border: '#22c55e', dot: '#22c55e', label: t('common.running') }
+      return { bg: 'var(--color-state-running-bg)', border: 'var(--color-state-running-border)', dot: 'var(--color-state-running-border)', label: t('common.running') }
     case 'error':
-      return { bg: '#fef2f2', border: '#ef4444', dot: '#ef4444', label: t('common.error') }
+      return { bg: 'var(--color-state-error-bg)', border: 'var(--color-state-error-border)', dot: 'var(--color-state-error-border)', label: t('common.error') }
     default:
-      return { bg: '#f8fafc', border: '#cbd5e1', dot: '#94a3b8', label: t('common.stopped') }
+      return { bg: 'var(--color-state-stopped-bg)', border: 'var(--color-state-stopped-border)', dot: 'var(--color-state-stopped-dot)', label: t('common.stopped') }
   }
 })
 </script>
@@ -73,22 +73,22 @@ const stateStyle = computed(() => {
   border-radius: 10px;
   width: 272px;
   overflow: visible;
-  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.08);
+  box-shadow: 0 1px 4px var(--color-shadow-soft);
   cursor: pointer;
   transition: box-shadow 0.15s ease, transform 0.15s ease, border-color 0.15s ease;
 }
 
 .tunnel-node:hover,
 .tunnel-node.selected {
-  box-shadow: 0 8px 18px rgba(15, 23, 42, 0.14);
+  box-shadow: 0 8px 18px var(--color-shadow-medium);
   transform: translateY(-1px);
 }
 
-.tunnel-node.selected { border-color: #2563eb !important; }
-.tunnel-node:focus-visible { outline: 2px solid #2563eb; outline-offset: 2px; }
-.tunnel-top { display: flex; align-items: center; gap: 6px; padding: 10px 12px; border-bottom: 1px solid rgba(0, 0, 0, 0.06); }
-.icon { width: 14px; height: 14px; color: #64748b; flex-shrink: 0; }
-.name { font-weight: 600; font-size: 12px; color: #1e293b; flex: 1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.tunnel-node.selected { border-color: var(--color-accent) !important; }
+.tunnel-node:focus-visible { outline: 2px solid var(--color-accent); outline-offset: 2px; }
+.tunnel-top { display: flex; align-items: center; gap: 6px; padding: 10px 12px; border-bottom: 1px solid var(--color-divider-soft); }
+.icon { width: 14px; height: 14px; color: var(--color-text-tertiary); flex-shrink: 0; }
+.name { font-weight: 600; font-size: 12px; color: var(--color-text); flex: 1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .state-pill { display: inline-flex; align-items: center; gap: 4px; font-size: 10px; font-weight: 600; padding: 2px 6px 2px 5px; border-radius: 10px; border: 1px solid; flex-shrink: 0; }
 .state-dot { width: 6px; height: 6px; border-radius: 50%; flex-shrink: 0; }
 .tunnel-info { display: flex; flex-direction: column; gap: 6px; padding: 12px; }
@@ -98,10 +98,10 @@ const stateStyle = computed(() => {
   font-weight: 700;
   text-transform: uppercase;
   letter-spacing: 0.04em;
-  color: #64748b;
+  color: var(--color-text-tertiary);
   flex-shrink: 0;
 }
-.endpoint-label--local { color: #7c3aed; }
+.endpoint-label--local { color: var(--color-node-target-border); }
 .target {
   display: flex;
   align-items: center;
@@ -113,15 +113,15 @@ const stateStyle = computed(() => {
   flex-shrink: 0;
 }
 .dir-badge { font-family: 'SF Mono', 'Fira Code', monospace; font-size: 10px; font-weight: 700; padding: 1px 5px; border-radius: 4px; flex-shrink: 0; }
-.dir-badge.local { background: #dbeafe; color: #1d4ed8; }
-.dir-badge.remote { background: #fce7f3; color: #9d174d; }
-.addr { font-family: 'SF Mono', 'Fira Code', monospace; font-size: 11px; color: #475569; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.dir-badge.local { background: var(--color-tag-blue-bg); color: var(--color-tag-blue-text); }
+.dir-badge.remote { background: var(--color-tag-pink-bg); color: var(--color-tag-pink-text); }
+.addr { font-family: 'SF Mono', 'Fira Code', monospace; font-size: 11px; color: var(--color-text-secondary); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 :deep(.handle-right) {
   width: 10px !important;
   height: 10px !important;
   right: -5px;
-  background: #2563eb !important;
-  border: 2px solid #fff !important;
+  background: var(--color-accent) !important;
+  border: 2px solid var(--color-surface) !important;
   z-index: 4;
   animation: tunnel-handle-pulse 1.8s ease-out infinite;
 }

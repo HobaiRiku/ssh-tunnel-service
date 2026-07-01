@@ -49,7 +49,7 @@ const localPortText = computed(() => (props.data?.localPort == null ? '' : Strin
       :style="labelPositionStyle"
     >
       <span class="tunnel-edge-port">{{ remotePortText }}</span>
-      <span class="tunnel-edge-icon" aria-hidden="true" :style="{ color: data?.reversed ? '#9d174d' : '#1d4ed8' }">{{ data?.reversed ? '←' : '→' }}</span>
+      <span class="tunnel-edge-icon" aria-hidden="true" :style="{ color: data?.reversed ? 'var(--color-tag-pink-text)' : 'var(--color-tag-blue-text)' }">{{ data?.reversed ? '←' : '→' }}</span>
       <span class="tunnel-edge-port">{{ localPortText }}</span>
     </div>
   </EdgeLabelRenderer>
@@ -62,8 +62,8 @@ const localPortText = computed(() => (props.data?.localPort == null ? '' : Strin
   align-items: baseline;
   gap: 4px;
   padding: 1px 6px;
-  background: rgba(255, 255, 255, 0.85);
-  color: #475569;
+  background: var(--color-overlay);
+  color: var(--color-text-secondary);
   font-family: 'SF Mono', 'Fira Code', monospace;
   font-size: 11px;
   font-weight: 600;
@@ -74,7 +74,7 @@ const localPortText = computed(() => (props.data?.localPort == null ? '' : Strin
 }
 
 .tunnel-edge-port {
-  color: #0f172a;
+  color: var(--color-text);
 }
 
 .tunnel-edge-icon {
@@ -83,5 +83,5 @@ const localPortText = computed(() => (props.data?.localPort == null ? '' : Strin
   line-height: 1;
 }
 
-.selected .tunnel-edge-port { color: #1d4ed8; }
+.selected .tunnel-edge-port { color: var(--color-accent-strong); }
 </style>
