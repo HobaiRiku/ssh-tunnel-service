@@ -13,6 +13,8 @@ import (
 	"ssh-tunnel-service/internal/paths"
 )
 
+var resolveClientForConfig = resolveClient
+
 func configCmd() *cobra.Command {
 	root := &cobra.Command{
 		Use:   "config",
@@ -78,7 +80,7 @@ func configPathCmd() *cobra.Command {
 		Use:   "path",
 		Short: "Print config file path",
 		RunE: func(_ *cobra.Command, _ []string) error {
-			p, err := paths.Resolve(rootFlags.Home)
+			p, err := resolveConfigPaths(rootFlags.Home)
 			if err != nil {
 				return err
 			}
@@ -89,7 +91,7 @@ func configPathCmd() *cobra.Command {
 }
 
 func loadConfigForCLI(home string) (*config.Config, paths.Paths, error) {
-	p, err := paths.Resolve(home)
+	p, err := resolveConfigPaths(home)
 	if err != nil {
 		return nil, paths.Paths{}, err
 	}
@@ -109,6 +111,17 @@ func loadConfigForCLI(home string) (*config.Config, paths.Paths, error) {
 				return nil, p, err
 			}
 			return cfg, p, nil
+		}
+
+		func resolveConfigPaths(home string) (paths.Paths, error) {
+			c, err := resolveClientForConfig(home)
+			if err != nil {
+				return paths.Paths{}, err
+			}
+			if c != nil && c.home != "" {
+				return paths.Resolve(c.home)
+			}
+			return paths.Resolve(home)
 		}
 		return nil, p, err
 	}
