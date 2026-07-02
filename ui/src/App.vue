@@ -1,9 +1,9 @@
 <script setup lang="ts">
 import { NConfigProvider, NMessageProvider, NSelect, darkTheme, useOsTheme } from 'naive-ui'
 import { RouterLink, useRoute } from 'vue-router'
-import { computed, onMounted, ref, watchEffect } from 'vue'
+import { computed, watchEffect } from 'vue'
 import { useI18n, type Locale } from '@/i18n'
-import { api, type InstanceInfo } from '@/api/client'
+import InstanceBadge from '@/components/InstanceBadge.vue'
 
 const osTheme = useOsTheme()
 const isDark = computed(() => osTheme.value === 'dark')
@@ -16,25 +16,6 @@ const { locale, setLocale, t } = useI18n()
 // teleported content (modals, popovers) that lives outside .app-shell.
 watchEffect(() => {
   document.documentElement.classList.toggle('dark', isDark.value)
-})
-
-// Instance identity badge: which instance this UI is talking to, mirroring the
-// CLI banner so users always know what they are operating on.
-const instance = ref<InstanceInfo | null>(null)
-const instanceLabel = computed(() => {
-  const info = instance.value
-  if (!info) return ''
-  const tail = info.home ? info.home.split(/[\\/]/).filter(Boolean).pop() : ''
-  const scope = info.scope || 'instance'
-  return info.scope === 'custom' && tail ? `${scope} · ${tail}` : scope
-})
-
-onMounted(async () => {
-  try {
-    instance.value = await api.instance()
-  } catch {
-    instance.value = null
-  }
 })
 
 const localeOptions = computed(() => [
@@ -86,11 +67,7 @@ function switchLocale(next: Locale) {
               :class="{ active: route.path === tab.to }"
             >{{ tab.label }}</RouterLink>
           </nav>
-          <span
-            v-if="instanceLabel"
-            class="instance-badge"
-            :title="instance ? `${instance.address} · ${instance.home}` : ''"
-          >{{ instanceLabel }}</span>
+          <InstanceBadge />
           <n-select
             class="locale-switcher"
             size="small"
@@ -269,21 +246,6 @@ body {
 
 .nav-tab:hover { color: var(--color-text-secondary); }
 .nav-tab.active { color: var(--color-accent); border-bottom-color: var(--color-accent); }
-
-.instance-badge {
-  display: inline-flex;
-  align-items: center;
-  margin-left: auto;
-  padding: 3px 10px;
-  font-size: 12px;
-  font-weight: 600;
-  color: var(--color-accent);
-  background: var(--color-accent-bg);
-  border: 1px solid var(--color-accent-border);
-  border-radius: 999px;
-  white-space: nowrap;
-  user-select: none;
-}
 
 .locale-switcher {
   width: 96px;
