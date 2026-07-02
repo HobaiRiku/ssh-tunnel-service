@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, onMounted, ref } from 'vue'
-import { NButton, NModal, NSpace, NText, useMessage } from 'naive-ui'
+import { NButton, NModal, NSpace, useMessage } from 'naive-ui'
 import { api, type InstanceInfo } from '@/api/client'
 import { copyText } from '@/clipboard'
 import { useI18n } from '@/i18n'
@@ -100,20 +100,10 @@ onMounted(async () => {
         <tbody>
           <tr v-for="row in rows" :key="row.key">
             <th>{{ row.label }}</th>
-            <td>
-              <span class="detail-value">{{ row.value }}</span>
-              <n-button
-                text
-                size="tiny"
-                class="detail-copy"
-                :title="t('common.copy')"
-                @click="copyValue(row.value)"
-              >{{ t('common.copy') }}</n-button>
-            </td>
+            <td><span class="detail-value">{{ row.value }}</span></td>
           </tr>
         </tbody>
       </table>
-      <n-text depth="3" style="font-size:12px">{{ t('instance.copyHint') }}</n-text>
     </div>
     <template #action>
       <n-space justify="end">
@@ -178,10 +168,6 @@ onMounted(async () => {
 .detail-value {
   font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
   word-break: break-all;
-}
-
-.detail-copy {
-  margin-left: 10px;
-  vertical-align: middle;
+  user-select: text;
 }
 </style>

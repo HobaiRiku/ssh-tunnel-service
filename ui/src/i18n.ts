@@ -23,7 +23,6 @@ const messages = {
       version: 'Version',
       uptime: 'Uptime',
       copyAll: 'Copy all',
-      copyHint: 'Same fields as the `ssh-tunnel status` command.',
     },
     common: {
       add: 'Add',
@@ -215,7 +214,6 @@ const messages = {
       version: '版本',
       uptime: '运行时长',
       copyAll: '复制全部',
-      copyHint: '与 `ssh-tunnel status` 命令展示的字段一致。',
     },
     common: {
       add: '新增',
