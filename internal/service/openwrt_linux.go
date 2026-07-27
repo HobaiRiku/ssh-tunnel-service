@@ -26,18 +26,34 @@ func isOpenWrt() bool {
 	return err == nil
 }
 
-var openwrtInitTmpl = template.Must(template.New("").Parse(
+// shellQuote wraps s in single quotes and escapes any embedded single quotes
+// so the value is safe to embed in a POSIX shell script.
+func shellQuote(s string) string {
+	return "'" + strings.ReplaceAll(s, "'", "'\\''") + "'"
+}
+
+// fmtCmdError formats a command error, including trimmed output only when non-empty.
+func fmtCmdError(prefix string, out []byte, err error) error {
+	if msg := strings.TrimSpace(string(out)); msg != "" {
+		return fmt.Errorf("%s: %s: %w", prefix, msg, err)
+	}
+	return fmt.Errorf("%s: %w", prefix, err)
+}
+
+var openwrtInitTmpl = template.Must(template.New("").Funcs(template.FuncMap{
+	"shellQuote": shellQuote,
+}).Parse(
 	`#!/bin/sh /etc/rc.common
 USE_PROCD=1
 START=95
 STOP=01
 
-PROG={{.BinaryPath}}
+PROG={{shellQuote .BinaryPath}}
 
 start_service() {
 	procd_open_instance
 	procd_set_param command "$PROG"
-	procd_set_param env SSH_TUNNEL_HOME={{.Home}}
+	procd_set_param env SSH_TUNNEL_HOME={{shellQuote .Home}}
 	procd_set_param stdout 1
 	procd_set_param stderr 1
 	procd_set_param respawn
@@ -60,13 +76,15 @@ func openwrtInstall(home string) error {
 	}
 	if out, err := exec.Command(openwrtInitScript, "enable").CombinedOutput(); err != nil {
 		_ = os.Remove(openwrtInitScript)
-		return fmt.Errorf("enable service: %s: %w", strings.TrimSpace(string(out)), err)
+		return fmtCmdError("enable service", out, err)
 	}
 	return nil
 }
 
-// openwrtUninstall disables the procd service and removes its init script.
+// openwrtUninstall stops, disables the procd service and removes its init script.
 func openwrtUninstall() error {
+	// Best-effort stop to avoid repeated restarts after the script is removed.
+	_, _ = exec.Command(openwrtInitScript, "stop").CombinedOutput()
 	// Ignore errors from disable — the script may already be absent.
 	_, _ = exec.Command(openwrtInitScript, "disable").CombinedOutput()
 	if err := os.Remove(openwrtInitScript); err != nil && !os.IsNotExist(err) {
@@ -79,7 +97,7 @@ func openwrtUninstall() error {
 func openwrtStart() error {
 	out, err := exec.Command(openwrtInitScript, "start").CombinedOutput()
 	if err != nil {
-		return fmt.Errorf("start service: %s: %w", strings.TrimSpace(string(out)), err)
+		return fmtCmdError("start service", out, err)
 	}
 	return nil
 }
@@ -88,7 +106,7 @@ func openwrtStart() error {
 func openwrtStop() error {
 	out, err := exec.Command(openwrtInitScript, "stop").CombinedOutput()
 	if err != nil {
-		return fmt.Errorf("stop service: %s: %w", strings.TrimSpace(string(out)), err)
+		return fmtCmdError("stop service", out, err)
 	}
 	return nil
 }
