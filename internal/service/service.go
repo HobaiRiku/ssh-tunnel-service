@@ -129,8 +129,8 @@ func RunService(home string) error {
 // kardianos/service unit; user-scope is not supported.
 func Install(home string, user bool) error {
 	if isOpenWrt() {
-		if user {
-			return fmt.Errorf("user-level services are not supported on OpenWrt; omit --user or use `ssh-tunnel run`")
+		if err := checkUserScope(user); err != nil {
+			return err
 		}
 		if err := validateInstallExecutable(); err != nil {
 			return err
@@ -206,8 +206,8 @@ func ensureInstallHome(home string) error {
 // Uninstall removes the service registration and the installed binary.
 func Uninstall(home string, user bool) error {
 	if isOpenWrt() {
-		if user {
-			return fmt.Errorf("user-level services are not supported on OpenWrt")
+		if err := checkUserScope(user); err != nil {
+			return err
 		}
 		if err := openwrtUninstall(); err != nil {
 			return err
@@ -241,8 +241,8 @@ func rollbackBinary(installedExe string, created, user bool) {
 // Start requests the OS to start the registered service.
 func Start(home string, user bool) error {
 	if isOpenWrt() {
-		if user {
-			return fmt.Errorf("user-level services are not supported on OpenWrt")
+		if err := checkUserScope(user); err != nil {
+			return err
 		}
 		return openwrtStart()
 	}
@@ -262,8 +262,8 @@ func Start(home string, user bool) error {
 // Stop requests the OS to stop the registered service.
 func Stop(home string, user bool) error {
 	if isOpenWrt() {
-		if user {
-			return fmt.Errorf("user-level services are not supported on OpenWrt")
+		if err := checkUserScope(user); err != nil {
+			return err
 		}
 		return openwrtStop()
 	}
