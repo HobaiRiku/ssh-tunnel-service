@@ -106,7 +106,13 @@ func UserScopeSupported() bool { return checkUserScope(true) == nil }
 // the privilege of the running process (a systemd --user unit / LaunchAgent runs
 // unprivileged; the system service runs elevated), matching how the home dir is
 // resolved.
+//
+// On OpenWrt the process is managed directly by procd, so kardianos/service is
+// bypassed and the service simply blocks until a signal is received.
 func RunService(home string) error {
+	if isOpenWrt() {
+		return openwrtRunService(home)
+	}
 	svc, _, err := New(home, !elevate.IsElevated())
 	if err != nil {
 		return err
@@ -118,7 +124,38 @@ func RunService(home string) error {
 // stable, system-wide location (see binary.go) so the generated unit references
 // that path rather than the caller's working copy, then registers the service
 // pointing at it. The binary copy is rolled back if registration fails.
+//
+// On OpenWrt the service is registered as a procd init script instead of a
+// kardianos/service unit; user-scope is not supported.
 func Install(home string, user bool) error {
+	if isOpenWrt() {
+		if user {
+			return fmt.Errorf("user-level services are not supported on OpenWrt; omit --user or use `ssh-tunnel run`")
+		}
+		if err := validateInstallExecutable(); err != nil {
+			return err
+		}
+		if err := ensureInstallHome(home); err != nil {
+			return err
+		}
+		p, err := paths.Resolve(home)
+		if err != nil {
+			return err
+		}
+		installedExe, created, err := installSystemBinary(false)
+		if err != nil {
+			return fmt.Errorf("install binary: %w", err)
+		}
+		if err := openwrtInstall(p.Home); err != nil {
+			rollbackBinary(installedExe, created, false)
+			return err
+		}
+		if created {
+			fmt.Fprintf(os.Stderr, "ssh-tunnel: binary installed to %s\n", installedExe)
+		}
+		return nil
+	}
+
 	if err := checkUserScope(user); err != nil {
 		return err
 	}
@@ -168,6 +205,15 @@ func ensureInstallHome(home string) error {
 
 // Uninstall removes the service registration and the installed binary.
 func Uninstall(home string, user bool) error {
+	if isOpenWrt() {
+		if user {
+			return fmt.Errorf("user-level services are not supported on OpenWrt")
+		}
+		if err := openwrtUninstall(); err != nil {
+			return err
+		}
+		return removeSystemBinary(false)
+	}
 	if err := checkUserScope(user); err != nil {
 		return err
 	}
@@ -194,6 +240,12 @@ func rollbackBinary(installedExe string, created, user bool) {
 
 // Start requests the OS to start the registered service.
 func Start(home string, user bool) error {
+	if isOpenWrt() {
+		if user {
+			return fmt.Errorf("user-level services are not supported on OpenWrt")
+		}
+		return openwrtStart()
+	}
 	if err := checkUserScope(user); err != nil {
 		return err
 	}
@@ -209,6 +261,12 @@ func Start(home string, user bool) error {
 
 // Stop requests the OS to stop the registered service.
 func Stop(home string, user bool) error {
+	if isOpenWrt() {
+		if user {
+			return fmt.Errorf("user-level services are not supported on OpenWrt")
+		}
+		return openwrtStop()
+	}
 	if err := checkUserScope(user); err != nil {
 		return err
 	}

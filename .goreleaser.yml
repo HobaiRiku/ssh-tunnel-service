@@ -47,12 +47,51 @@ builds:
       - arm
     goarm:
       - "7"
+  - id: ssh-tunnel-service-linux-mips
+    main: .
+    binary: ssh-tunnel
+    env:
+      - CGO_ENABLED=0
+    flags:
+      - -trimpath
+      - -tags=embedui
+    ldflags:
+      - -s -w
+      - -X ssh-tunnel-service/internal/version.Version={{ .Version }}
+      - -X ssh-tunnel-service/internal/version.Commit={{ .Commit }}
+      - -X ssh-tunnel-service/internal/version.BuildDate={{ .Date }}
+    goos:
+      - linux
+    goarch:
+      - mips
+      - mipsle
+    gomips:
+      - softfloat
+  - id: ssh-tunnel-service-linux-386
+    main: .
+    binary: ssh-tunnel
+    env:
+      - CGO_ENABLED=0
+    flags:
+      - -trimpath
+      - -tags=embedui
+    ldflags:
+      - -s -w
+      - -X ssh-tunnel-service/internal/version.Version={{ .Version }}
+      - -X ssh-tunnel-service/internal/version.Commit={{ .Commit }}
+      - -X ssh-tunnel-service/internal/version.BuildDate={{ .Date }}
+    goos:
+      - linux
+    goarch:
+      - "386"
 
 archives:
   - id: default
     ids:
       - ssh-tunnel-service
       - ssh-tunnel-service-linux-armv7
+      - ssh-tunnel-service-linux-mips
+      - ssh-tunnel-service-linux-386
     formats:
       - tar.gz
     format_overrides:
