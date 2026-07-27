@@ -12,10 +12,14 @@ import (
 // named after the CLI (`ssh-tunnel`), not the service registration name
 // (`ssh-tunnel-service`).
 //
-//   - system scope → /usr/local/bin/ssh-tunnel (on PATH, root-writable, which
+//   - OpenWrt        → /usr/sbin/ssh-tunnel (procd convention; always system).
+//   - system scope   → /usr/local/bin/ssh-tunnel (on PATH, root-writable, which
 //     the elevated install guarantees).
-//   - user scope   → ~/.local/bin/ssh-tunnel (user-writable, no root needed).
+//   - user scope     → ~/.local/bin/ssh-tunnel (user-writable, no root needed).
 func binaryDest(user bool) (string, error) {
+	if isOpenWrt() {
+		return "/usr/sbin/ssh-tunnel", nil
+	}
 	if user {
 		home, err := os.UserHomeDir()
 		if err != nil || home == "" {
