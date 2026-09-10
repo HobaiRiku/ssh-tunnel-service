@@ -46,6 +46,7 @@ func Root() *cobra.Command {
 		keyCmd(),
 		tunnelCmd(),
 		configCmd(),
+		skillCmd(),
 		versionCmd(),
 	)
 	return root

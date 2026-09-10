@@ -91,6 +91,43 @@ The **system** control commands (`install`/`uninstall`/`start`/`stop`) require a
 
 Every managed key materializes a public key: `Registry.prepareKey` writes `<file>.pub` (via `config.PublicKeyAuthorized`) next to the `0600` private key, and `GetKey`/`ListKeys` populate the non-persisted `config.SSHKey.Public` (`yaml:"-"`) from it (deriving from the private key if the `.pub` is missing). Exposed via `key pub <name>`, `key list --json`, and the web UI "copy public key" action.
 
+### Agent Skill packaging (`internal/skill`)
+
+`internal/skill` embeds an Agent Plugin payload (`internal/skill/plugin/`:
+`plugin.json` + `skills/ssh-tunnel/{SKILL.md,reference.md}`) and installs it
+into the roots agent clients discover skills from. The format is shared (Agent
+Skills 1.0) but **each client keeps its own root and scans no other**, so a
+"target" is a (client, scope) pair resolved to a directory: Claude Code at
+`~/.claude/skills/<name>` (or `$CLAUDE_CONFIG_DIR`), Codex at
+`~/.agents/skills/<name>`, plus the `<repo>/.claude|.agents` project variants.
+`ResolveTargets` with no explicit client auto-detects by testing whether the
+*client root* exists — never the `skills/` subdirectory, which usually does not
+exist until the first install.
+
+Installs are content-addressed: `writeAtomic` stages the payload in a sibling
+temp directory and swaps it in, recording a `.ssh-tunnel-install.json` manifest
+of sha256 digests. `inspect` uses that manifest to tell `up to date` from
+`updated` from *foreign* (no manifest, or files that no longer match it), and
+foreign destinations are refused without `--force` so a hand-edited or
+third-party skill is never silently clobbered.
+
+`cmd/skill.go` must **never** call `ensurePrivileged`: the payload belongs in
+the invoking user's home, and under `sudo` `os.UserHomeDir()` resolves to
+root's — a silent wrong-destination failure. `refuseElevated` blocks only when
+`SUDO_USER` is set; a plain root session is a legitimate destination.
+
+AGENTS.md is the fallback for agents that read one always-on instruction file:
+`InjectAgents` writes the SKILL.md body with **frontmatter stripped** into a
+marker-delimited block, replacing an existing block in place and leaving
+everything outside the markers byte-identical. It targets the repository root
+only — never the user-home AGENTS.md some agents also read, which would put
+tunnel docs into every unrelated task.
+
+When adding a skill file, put it in `internal/skill/plugin/skills/ssh-tunnel/`;
+`all:plugin` picks it up and the manifest covers it automatically. Keep
+`reference.md` in sync with the CLI flags in `cmd/` — it is the contract agents
+build commands from.
+
 ## Conventions
 
 - Go: error-as-value via tuples; reserve `try/catch`-style wrapping (`fmt.Errorf("...: %w", err)`) for adding context at boundaries.

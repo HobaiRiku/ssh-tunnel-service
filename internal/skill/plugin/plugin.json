@@ -1,0 +1,7 @@
+{
+  "name": "ssh-tunnel",
+  "version": "1.0.0",
+  "description": "Manage SSH -L/-R port-forwarding tunnels through the ssh-tunnel service.",
+  "homepage": "https://github.com/HobaiRiku/ssh-tunnel-service",
+  "license": "MIT"
+}
