@@ -217,9 +217,56 @@ Commands:
     stop      Stop a running tunnel
     restart   Restart a tunnel via the running service
 
+  skill       Install the Agent Skill into AI coding agents
+    install   Install into detected clients (--target claude|codex|all)
+    uninstall Remove a previously installed skill
+    print     Print the skill to stdout (--reference for the full command list)
+
   config      Manage configuration
   version     Print version information
 ```
+
+## AI agent support
+
+The binary ships an [Agent Skill](https://agent-plugins.org/specification) that
+teaches AI coding agents to drive this CLI — creating remotes, opening tunnels,
+reading live state, and diagnosing failures.
+
+```bash
+ssh-tunnel skill install
+```
+
+With no flags it installs into every agent client whose configuration root
+already exists on the machine:
+
+| Client | User scope | Project scope (`--project`) |
+| --- | --- | --- |
+| Claude Code | `~/.claude/skills/ssh-tunnel/` | `<repo>/.claude/skills/ssh-tunnel/` |
+| Codex | `~/.agents/skills/ssh-tunnel/` | `<repo>/.agents/skills/ssh-tunnel/` |
+
+`$CLAUDE_CONFIG_DIR` is honoured when set. The skill is the same `SKILL.md` in
+every location — the Agent Skills format is shared, only the discovery root
+differs per client.
+
+Other destinations:
+
+```bash
+ssh-tunnel skill install --target claude,codex   # install regardless of detection
+ssh-tunnel skill install --project               # into the current repository
+ssh-tunnel skill install --dir <path>            # any directory, for a client not listed
+ssh-tunnel skill install --dir <path> --plugin   # the whole Agent Plugin (plugin.json + skills/)
+ssh-tunnel skill install --agents-md             # also inject a block into the repo's AGENTS.md
+ssh-tunnel skill print                           # stdout, for anything else
+```
+
+Installs are idempotent and report what they did (`installed` / `updated` /
+`up to date`). A destination this tool did not write, or one you have edited by
+hand, is left alone unless you pass `--force`; `--dry-run` shows the plan
+first. Re-run `skill install` after upgrading the binary so the skill matches
+the CLI it documents.
+
+Do not run `skill install` under `sudo` — it writes into the invoking user's
+home, and under `sudo` that resolves to root's.
 
 ## Building
 

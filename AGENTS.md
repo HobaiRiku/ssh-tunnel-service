@@ -10,5 +10,6 @@ Cross-tool agent guide for this repo. The canonical instructions live in [`CLAUD
 - `ssh` is invoked non-interactively (`BatchMode=yes`, password/keyboard-interactive disabled). Password-only remotes are expected to fail fast with a diagnostic from `Manager.diagnoseSSHFailure`. Don't add interactive fallbacks.
 - SPA embedding is gated by the `embedui` build tag; `make build` / `make dist` apply it. Plain `go build .` ships the placeholder page in `internal/web/embed.go`.
 - API token lives in `<SSH_TUNNEL_HOME>/token`, never `config.yaml`. `/api/bootstrap` is loopback-only and exposes it to the SPA; embedded HTML additionally injects `window.__AUTH_TOKEN__`.
+- `internal/skill` embeds the Agent Skill shipped to AI coding agents and installs it into each client's own root (`~/.claude/skills`, `~/.agents/skills`). `cmd/skill.go` must never elevate — the payload belongs in the invoking user's home.
 
 See `CLAUDE.md` for the full architecture walkthrough, conventions, and per-area "how to change X" notes.
