@@ -47,25 +47,35 @@ func TestWriteDiscoverRoundtrip(t *testing.T) {
 	}
 	t.Cleanup(Remove)
 
-	got := Discover()
-	if len(got) == 0 {
-		t.Fatal("Discover returned no instances")
+	// Match on the endpoint this test wrote rather than on Discover being empty
+	// or on got[0]: the system scope directory is an absolute path no
+	// environment variable can redirect, so a service actually installed on the
+	// developer's machine is discovered alongside it.
+	got := findHome(Discover(), "/tmp/home")
+	if got == nil {
+		t.Fatal("Discover did not return the endpoint just written")
 	}
-	first := got[0]
-	if first.Scope != CurrentScope() {
-		t.Errorf("scope = %q, want %q", first.Scope, CurrentScope())
+	if got.Scope != CurrentScope() {
+		t.Errorf("scope = %q, want %q", got.Scope, CurrentScope())
 	}
-	if first.Address != "127.0.0.1:2222" {
-		t.Errorf("address = %q, want normalized loopback", first.Address)
-	}
-	if first.Home != "/tmp/home" {
-		t.Errorf("home = %q, want /tmp/home", first.Home)
+	if got.Address != "127.0.0.1:2222" {
+		t.Errorf("address = %q, want normalized loopback", got.Address)
 	}
 
 	Remove()
-	if len(Discover()) != 0 {
-		t.Error("Discover still returns an instance after Remove")
+	if findHome(Discover(), "/tmp/home") != nil {
+		t.Error("Discover still returns the endpoint after Remove")
 	}
+}
+
+// findHome returns the discovered instance with the given home, or nil.
+func findHome(infos []Info, home string) *Info {
+	for i := range infos {
+		if infos[i].Home == home {
+			return &infos[i]
+		}
+	}
+	return nil
 }
 
 func TestRemoveDoesNotDeleteEndpointOwnedByAnotherProcess(t *testing.T) {

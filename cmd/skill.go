@@ -133,12 +133,32 @@ func runSkill(c *cobra.Command, f *skillFlags, remove bool) error {
 		fmt.Fprintln(out, "dry run — nothing will be written")
 	}
 
+	// A dry-run install reports per destination what a real run would do, which
+	// a plain Install cannot distinguish once it knows it will not write.
+	var plan map[string]skill.Outcome
+	if f.DryRun && !remove {
+		if plan, err = skill.Plan(destPaths(dests), payload); err != nil {
+			return err
+		}
+	}
+
 	for _, d := range dests {
 		outcome, err := applySkill(d, payload, opts, remove)
 		if err != nil {
 			return err
 		}
+		if planned, ok := plan[d.path]; ok {
+			outcome = planned
+		}
 		fmt.Fprintf(out, "%-14s %s  %s\n", outcome, d.path, d.label)
+	}
+
+	if f.DryRun && !remove {
+		names, err := skill.Files(payload)
+		if err != nil {
+			return err
+		}
+		fmt.Fprintf(out, "files: %s\n", strings.Join(names, ", "))
 	}
 
 	if f.AgentsMD || f.AgentsMDPath != "" {
@@ -161,6 +181,14 @@ func runSkill(c *cobra.Command, f *skillFlags, remove bool) error {
 type destination struct {
 	path  string
 	label string
+}
+
+func destPaths(dests []destination) []string {
+	out := make([]string, 0, len(dests))
+	for _, d := range dests {
+		out = append(out, d.path)
+	}
+	return out
 }
 
 func skillPayload(plugin bool) (fs.FS, error) {

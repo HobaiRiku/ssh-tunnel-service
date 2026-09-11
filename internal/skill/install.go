@@ -33,9 +33,15 @@ const (
 	OutcomeRemoved Outcome = "removed"
 	// OutcomeMissing is reported by Uninstall when there was nothing to remove.
 	OutcomeMissing Outcome = "not installed"
-	// OutcomeWouldWrite is reported by a dry run that would have changed
-	// something.
+	// OutcomeWouldWrite is reported by a dry run for a destination that needs
+	// --force: it holds foreign or hand-edited content, so a real run would
+	// refuse rather than write.
 	OutcomeWouldWrite Outcome = "would write"
+	// OutcomeWouldInstall, OutcomeWouldUpdate and OutcomeWouldRemove are the
+	// dry-run counterparts of the outcomes a real run would report.
+	OutcomeWouldInstall Outcome = "would install"
+	OutcomeWouldUpdate  Outcome = "would update"
+	OutcomeWouldRemove  Outcome = "would remove"
 )
 
 // ErrForeign is returned when the destination holds content this tool did not
@@ -119,7 +125,7 @@ func Uninstall(dir string, fsys fs.FS, opts Options) (Outcome, error) {
 	}
 
 	if opts.DryRun {
-		return OutcomeWouldWrite, nil
+		return OutcomeWouldRemove, nil
 	}
 	if err := os.RemoveAll(dir); err != nil {
 		return "", fmt.Errorf("remove %s: %w", dir, err)
@@ -264,11 +270,11 @@ func Plan(dirs []string, fsys fs.FS) (map[string]Outcome, error) {
 		}
 		switch state {
 		case stateAbsent:
-			out[dir] = OutcomeInstalled
+			out[dir] = OutcomeWouldInstall
 		case stateClean:
 			out[dir] = OutcomeUnchanged
 		case stateOurs:
-			out[dir] = OutcomeUpdated
+			out[dir] = OutcomeWouldUpdate
 		default:
 			out[dir] = OutcomeWouldWrite
 		}

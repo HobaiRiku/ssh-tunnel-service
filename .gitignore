@@ -12,9 +12,10 @@ ui/dist/
 # Local dev home
 .ssh-tunnel-service-home/
 
-# Go binary
-ssh-tunnel
-ssh-tunnel-service
+# Go binary — anchored: unanchored, `ssh-tunnel` also matches the skill payload
+# directory internal/skill/plugin/skills/ssh-tunnel/ and any .claude/skills/ssh-tunnel/
+/ssh-tunnel
+/ssh-tunnel-service
 *.exe
 
 # OS

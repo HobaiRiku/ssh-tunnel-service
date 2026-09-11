@@ -85,12 +85,15 @@ func gitRepo(t *testing.T) string {
 		t.Fatal(err)
 	}
 	t.Chdir(nested)
-	// macOS temp dirs are symlinked via /var; resolve so comparisons match.
-	resolved, err := filepath.EvalSymlinks(repo)
+	// Derive the expected root from the working directory the product will
+	// actually see: a macOS temp dir is reachable as both /var/… and
+	// /private/var/…, and repoRoot walks up from whichever spelling os.Getwd
+	// returns. Comparing against the other spelling fails on a real path.
+	wd, err := os.Getwd()
 	if err != nil {
 		t.Fatal(err)
 	}
-	return resolved
+	return filepath.Dir(filepath.Dir(wd))
 }
 
 // Resolving from a subdirectory must find the repository root: both clients
