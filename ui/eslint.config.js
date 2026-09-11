@@ -12,6 +12,19 @@ export default tseslint.config(
   ...pluginVue.configs['flat/essential'],
   ...tseslint.configs.recommendedTypeChecked,
   {
+    // recommendedTypeChecked applies to every file, but only TS/Vue files get a
+    // parser with type information below. Plain JS/MJS (branding scripts, config)
+    // would otherwise fail the typed rules with "you don't have parserOptions set
+    // to generate type information".
+    files: ['**/*.{js,mjs,cjs}'],
+    ...tseslint.configs.disableTypeChecked,
+    languageOptions: {
+      globals: {
+        ...globals.node,
+      },
+    },
+  },
+  {
     files: ['**/*.{ts,tsx,vue}'],
     languageOptions: {
       ecmaVersion: 'latest',
