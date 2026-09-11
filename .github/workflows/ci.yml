@@ -1,0 +1,98 @@
+name: ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  go:
+    name: go (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+
+      - name: gofmt
+        run: |
+          unformatted="$(gofmt -l .)"
+          if [ -n "$unformatted" ]; then
+            echo "these files need gofmt:"
+            echo "$unformatted"
+            exit 1
+          fi
+
+      - name: go vet
+        run: go vet ./...
+
+      # SSH_TUNNEL_HOME mirrors `make test`: it keeps the suite off the
+      # platform default data root.
+      - name: go test
+        run: SSH_TUNNEL_HOME="$PWD/.ssh-tunnel-service-home" go test ./...
+
+  cross:
+    name: cross-compile
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+
+      # The platform splits (home_*.go, elevate_*.go, userscope_*.go, dir_*.go)
+      # only compile under their own GOOS, so a single-platform build never
+      # type-checks them. vet compiles the test files too.
+      - name: Build and vet every target platform
+        run: |
+          for os in linux darwin windows; do
+            echo "== $os =="
+            GOOS=$os go build ./...
+            GOOS=$os go vet ./...
+          done
+
+  ui:
+    name: ui
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Enable Corepack
+        run: corepack enable
+
+      - name: Install dependencies
+        working-directory: ui
+        run: pnpm install --frozen-lockfile
+
+      - name: Type check
+        working-directory: ui
+        run: pnpm run type-check
+
+      - name: Lint
+        working-directory: ui
+        run: pnpm run lint
