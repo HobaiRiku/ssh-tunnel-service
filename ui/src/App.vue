@@ -116,8 +116,13 @@ function switchLocale(next: Locale) {
   --color-tag-purple-bg: #ede9fe;
   --color-tag-purple-text: #6d28d9;
 
+  /* A running tunnel is coloured by direction: -L keeps the familiar green,
+     -R is violet. Error and stopped stay direction-blind — being down always
+     outranks which way the forward points. */
   --color-state-running-bg: #f0fdf4;
   --color-state-running-border: #22c55e;
+  --color-state-running-reverse-bg: #faf5ff;
+  --color-state-running-reverse-border: #a855f7;
   --color-state-error-bg: #fef2f2;
   --color-state-error-border: #ef4444;
   --color-state-stopped-bg: #f8fafc;
@@ -167,6 +172,8 @@ function switchLocale(next: Locale) {
 
   --color-state-running-bg: #12261a;
   --color-state-running-border: #22c55e;
+  --color-state-running-reverse-bg: #241a33;
+  --color-state-running-reverse-border: #a855f7;
   --color-state-error-bg: #391414;
   --color-state-error-border: #ef4444;
   --color-state-stopped-bg: #1e293b;

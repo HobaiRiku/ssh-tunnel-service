@@ -83,5 +83,10 @@ const localPortText = computed(() => (props.data?.localPort == null ? '' : Strin
   line-height: 1;
 }
 
-.selected .tunnel-edge-port { color: var(--color-accent-strong); }
+/* Selection is weight, not hue: recolouring to the accent used to collide with
+   the state and direction colours the edge itself carries. */
+.tunnel-edge-label.selected {
+  box-shadow: 0 0 0 1.5px var(--color-text-tertiary);
+}
+.tunnel-edge-label.selected .tunnel-edge-port { color: var(--color-text); }
 </style>

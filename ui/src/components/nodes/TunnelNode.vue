@@ -22,9 +22,12 @@ const { t } = useI18n()
 const arrowColor = computed(() => (props.data.direction === '-R' ? 'var(--color-tag-pink-text)' : 'var(--color-tag-blue-text)'))
 
 const stateStyle = computed(() => {
+  const reverse = props.data.direction === '-R'
   switch (props.data.state) {
     case 'running':
-      return { bg: 'var(--color-state-running-bg)', border: 'var(--color-state-running-border)', dot: 'var(--color-state-running-border)', label: t('common.running') }
+      return reverse
+        ? { bg: 'var(--color-state-running-reverse-bg)', border: 'var(--color-state-running-reverse-border)', dot: 'var(--color-state-running-reverse-border)', label: t('common.running') }
+        : { bg: 'var(--color-state-running-bg)', border: 'var(--color-state-running-border)', dot: 'var(--color-state-running-border)', label: t('common.running') }
     case 'error':
       return { bg: 'var(--color-state-error-bg)', border: 'var(--color-state-error-border)', dot: 'var(--color-state-error-border)', label: t('common.error') }
     default:
@@ -84,7 +87,11 @@ const stateStyle = computed(() => {
   transform: translateY(-1px);
 }
 
-.tunnel-node.selected { border-color: var(--color-accent) !important; }
+/* Selection reads as depth, not colour: the border already encodes the tunnel's
+   state, and overriding it with the accent hid whether the tunnel was healthy. */
+.tunnel-node.selected {
+  box-shadow: 0 0 0 2px var(--color-text-tertiary), 0 10px 22px var(--color-shadow-medium);
+}
 .tunnel-node:focus-visible { outline: 2px solid var(--color-accent); outline-offset: 2px; }
 .tunnel-top { display: flex; align-items: center; gap: 6px; padding: 10px 12px; border-bottom: 1px solid var(--color-divider-soft); }
 .icon { width: 14px; height: 14px; color: var(--color-text-tertiary); flex-shrink: 0; }

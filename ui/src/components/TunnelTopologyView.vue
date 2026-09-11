@@ -38,9 +38,13 @@ const message = useMessage()
 // resolve concrete hex values from the OS theme instead.
 const osTheme = useOsTheme()
 const isDark = computed(() => osTheme.value === 'dark')
+// `forward` / `reverse` colour a *running* tunnel by its direction, so -L and
+// -R are told apart at a glance. Failure and idle keep their own colours: a
+// direction is never worth knowing at the cost of hiding that the tunnel is
+// down.
 const flowPalette = computed(() => (isDark.value
-  ? { accent: '#3b82f6', success: '#22c55e', danger: '#ef4444', muted: '#64748b', border: '#475569', borderSoft: '#334155' }
-  : { accent: '#2563eb', success: '#22c55e', danger: '#ef4444', muted: '#94a3b8', border: '#cbd5e1', borderSoft: '#e2e8f0' }
+  ? { forward: '#22c55e', reverse: '#a855f7', danger: '#ef4444', muted: '#64748b', border: '#475569', borderSoft: '#334155' }
+  : { forward: '#22c55e', reverse: '#a855f7', danger: '#ef4444', muted: '#94a3b8', border: '#cbd5e1', borderSoft: '#e2e8f0' }
 ))
 
 // View state persisted across remounts (table <-> topology toggle, route changes)
@@ -211,18 +215,22 @@ const flowEdges = computed<Edge[]>(() => {
     const localEndpoint = getLocalEndpoint(tunnel)
     const selected = tunnel.name === props.selectedTunnelName
     const palette = flowPalette.value
-    const stroke = selected
-      ? palette.accent
-      : tunnel.state === 'running'
-        ? palette.success
-        : tunnel.state === 'error'
-          ? palette.danger
-          : palette.muted
 
     // A -R (remote forward) flows from the remote side back to the local
     // target, so the arrow points the opposite way: anchor it at the source
     // end (markerStart) instead of the target end (markerEnd).
     const reversed = tunnel.direction === '-R'
+
+    // Selection deliberately does not recolour the edge. It used to become the
+    // accent blue, which collided with the state and direction colours and left
+    // the selected tunnel's health unreadable; weight and a glow carry it
+    // instead.
+    const stroke = tunnel.state === 'running'
+      ? (reversed ? palette.reverse : palette.forward)
+      : tunnel.state === 'error'
+        ? palette.danger
+        : palette.muted
+
     const marker = { type: MarkerType.ArrowClosed, width: 22, height: 22, strokeWidth: 1, color: stroke, markerUnits: 'userSpaceOnUse' as const }
 
     return {
@@ -231,6 +239,9 @@ const flowEdges = computed<Edge[]>(() => {
       target: `target-${tunnel.name}`,
       type: 'tunnel',
       animated: tunnel.state === 'running',
+      // The dash animation runs source→target; a -R edge carries traffic the
+      // other way, so its animation is reversed to match the arrow.
+      class: reversed ? 'tunnel-edge-reversed' : undefined,
       data: {
         remotePort: remoteEndpoint.port,
         localPort: localEndpoint.port,
@@ -241,9 +252,10 @@ const flowEdges = computed<Edge[]>(() => {
       markerEnd: reversed ? undefined : marker,
       style: {
         stroke,
-        strokeWidth: selected ? 3.2 : 2.4,
+        strokeWidth: selected ? 4 : 2.4,
+        filter: selected ? `drop-shadow(0 0 5px ${stroke})` : undefined,
       },
-      zIndex: 3,
+      zIndex: selected ? 4 : 3,
     }
   })
 })
@@ -606,4 +618,12 @@ watch(contentHeight, () => apply())
   cursor: pointer;
 }
 .ctx-menu-item:hover { background: var(--color-surface-alt); }
+
+/* vue-flow animates the dash from source to target. A -R edge carries traffic
+   the other way, so the same animation is played backwards to match its arrow.
+   :deep is required — the edge elements are rendered by vue-flow, not by this
+   component's own template. */
+:deep(.vue-flow__edge.tunnel-edge-reversed.animated path) {
+  animation-direction: reverse;
+}
 </style>

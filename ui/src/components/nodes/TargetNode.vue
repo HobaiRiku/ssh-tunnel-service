@@ -31,7 +31,7 @@ defineProps<{
 
 <style scoped>
 .target-node { display: inline-flex; align-items: center; background: var(--color-node-target-bg); border: 1.5px solid var(--color-node-target-border); border-radius: 10px; box-shadow: 0 1px 4px var(--color-shadow-soft); overflow: visible; cursor: pointer; }
-.target-node.selected { border-color: var(--color-accent); box-shadow: 0 8px 18px var(--color-shadow-medium); }
+.target-node.selected { box-shadow: 0 0 0 2px var(--color-text-tertiary), 0 8px 18px var(--color-shadow-medium); }
 .target-inner { display: flex; align-items: center; gap: 7px; padding: 10px 14px; }
 .icon { width: 16px; height: 16px; color: var(--color-node-target-border); flex-shrink: 0; }
 .addr-block { display: flex; align-items: baseline; gap: 1px; font-family: 'SF Mono', 'Fira Code', monospace; }
