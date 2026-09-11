@@ -53,8 +53,18 @@ func installSystem(importKeys []string) error {
 	// Before elevating, when interactive and the caller didn't already specify
 	// keys, offer to import the current user's ~/.ssh keys. The choices are
 	// forwarded to the elevated child as --import-key flags.
+	//
+	// Only on a first install: re-running install over an existing one (an
+	// upgrade, or a repeat after a failure) already has its keys, and asking
+	// again every time reads as though the previous answer was lost.
 	if !elevate.IsElevated() && len(importKeys) == 0 {
-		importKeys = promptKeyImport()
+		if service.Installed(false) {
+			fmt.Fprintln(os.Stderr,
+				"ssh-tunnel: existing system install detected, keeping its keys "+
+					"(pass --import-key <path> to add more).")
+		} else {
+			importKeys = promptKeyImport()
+		}
 	}
 	extra := make([]string, 0, len(importKeys))
 	for _, k := range importKeys {

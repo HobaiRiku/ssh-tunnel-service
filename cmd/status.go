@@ -7,6 +7,8 @@ import (
 	"os"
 
 	"github.com/spf13/cobra"
+
+	"ssh-tunnel-service/internal/version"
 )
 
 // instancePayload mirrors GET /api/instance.
@@ -62,6 +64,12 @@ func statusCmd() *cobra.Command {
 			fmt.Printf("PID:      %d\n", info.PID)
 			fmt.Printf("Version:  %s\n", info.Version)
 			fmt.Printf("Uptime:   %s\n", formatUptime(info.UptimeSeconds))
+			// A package upgrade replaces the package's binary, not the copy the
+			// service unit points at, so the two drift apart silently.
+			if info.Version != version.Version {
+				fmt.Printf("\nThis CLI is %s but the service is running %s.\n", version.Version, info.Version)
+				fmt.Printf("Run `ssh-tunnel update` to refresh the service binary and restart it.\n")
+			}
 			return nil
 		},
 	}

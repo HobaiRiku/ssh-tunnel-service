@@ -98,6 +98,32 @@ func Interactive() bool { return kservice.Interactive() }
 // scope, for display in install summaries.
 func BinaryPath(user bool) (string, error) { return binaryDest(user) }
 
+// RefreshBinary re-copies the running executable over the installed one,
+// reporting the destination and whether anything was actually replaced.
+//
+// This is what makes a package-manager upgrade take effect: the service unit
+// points at the stable copy, not at the binary the package manager replaced, so
+// upgrading the package alone leaves the service running the old code. Not
+// replaced (false) means the running executable already *is* the installed one,
+// which is the normal case wherever the package prefix and the install
+// destination coincide.
+func RefreshBinary(user bool) (dest string, replaced bool, err error) {
+	return installSystemBinary(user)
+}
+
+// Installed reports whether the service's binary is already in place for the
+// given scope. It only stats a world-readable path, so it answers before
+// elevation — which is what lets `install` tell a first run from a repeat one
+// while it still has the invoking user's TTY and home.
+func Installed(user bool) bool {
+	dest, err := binaryDest(user)
+	if err != nil {
+		return false
+	}
+	info, err := os.Stat(dest)
+	return err == nil && !info.IsDir()
+}
+
 // UserScopeSupported reports whether user-level services are available on this
 // platform (false on Windows).
 func UserScopeSupported() bool { return checkUserScope(true) == nil }

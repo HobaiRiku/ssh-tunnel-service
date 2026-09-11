@@ -134,3 +134,13 @@ brews:
       bin.install "ssh-tunnel"
     test: |
       system "#{bin}/ssh-tunnel", "version"
+    caveats: |
+      `ssh-tunnel install` copies the binary to a stable path and points the
+      service unit at that copy, so upgrading this formula does not change what
+      the running service executes. After an upgrade, run:
+
+        ssh-tunnel update
+
+      It refreshes the installed binary and restarts the service (auto-start
+      tunnels reconnect on their own). `ssh-tunnel status` reports the version
+      skew whenever the two drift apart.
