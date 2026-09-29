@@ -43,6 +43,21 @@ func Run(ctx context.Context, opts Options) error {
 	reg := services.New(opts.Config, opts.Paths, rt)
 	mgr := services.NewManager(ctx, reg, rt, opts.Logger.With("component", "manager"), opts.SystemService)
 	reg.SetManager(mgr)
+	// Restore traffic totals and history from the last run, drop what belongs
+	// to tunnels that no longer exist, then keep sampling and saving it.
+	trafficPath, trafficMode := opts.Paths.Traffic(), opts.Paths.FileMode()
+	if err := rt.LoadTraffic(trafficPath); err != nil {
+		opts.Logger.Warn("traffic history not restored", "err", err)
+	}
+	known := map[string]bool{}
+	for _, ts := range reg.ListTunnels() {
+		known[ts.Name] = true
+	}
+	rt.PruneTraffic(known)
+	go rt.RunTrafficSampler(ctx)
+	go rt.RunTrafficSaver(ctx, trafficPath, trafficMode, func(err error) {
+		opts.Logger.Warn("save traffic history", "err", err)
+	})
 
 	// Backfill `.pub` files for any managed key created before public-key
 	// materialization existed, so the web UI / `key pub` can surface them.
@@ -105,6 +120,10 @@ func Run(ctx context.Context, opts Options) error {
 	// down every ssh child before returning so a subsequent service start is not
 	// blocked by an orphaned process still holding a forwarded port.
 	mgr.Shutdown()
+	// Persist the final traffic, including bytes moved since the last sample.
+	if err := rt.FlushTraffic(trafficPath, trafficMode); err != nil {
+		opts.Logger.Warn("save traffic history on shutdown", "err", err)
+	}
 	if err != nil && !errors.Is(err, http.ErrServerClosed) {
 		return fmt.Errorf("http server: %w", err)
 	}

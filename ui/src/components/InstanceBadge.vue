@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, onMounted, ref } from 'vue'
 import { NButton, NModal, NSpace, useMessage } from 'naive-ui'
-import { api, type InstanceInfo } from '@/api/client'
+import { useInstanceStore } from '@/stores/instance'
 import { copyText } from '@/clipboard'
 import { useI18n } from '@/i18n'
 
@@ -10,7 +10,8 @@ const message = useMessage()
 
 // Instance identity: which instance this UI is talking to, mirroring the CLI
 // banner/status so users always know (and can copy) what they are operating on.
-const instance = ref<InstanceInfo | null>(null)
+const instanceStore = useInstanceStore()
+const instance = computed(() => instanceStore.info)
 const showModal = ref(false)
 
 const instanceLabel = computed(() => {
@@ -71,12 +72,8 @@ async function copyAll() {
   await copyValue(plainText.value)
 }
 
-onMounted(async () => {
-  try {
-    instance.value = await api.instance()
-  } catch {
-    instance.value = null
-  }
+onMounted(() => {
+  void instanceStore.load()
 })
 </script>
 
@@ -93,7 +90,7 @@ onMounted(async () => {
     v-model:show="showModal"
     :title="t('instance.title')"
     preset="dialog"
-    style="width:560px"
+    style="width:560px;max-width:calc(100vw - 32px)"
   >
     <div v-if="instance" class="instance-detail">
       <table class="detail-table">

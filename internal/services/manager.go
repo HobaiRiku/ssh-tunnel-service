@@ -32,8 +32,12 @@ const stopGracePeriod = 5 * time.Second
 // once the process has exited and been reaped, so Stop/Restart can wait for the
 // old connection to be fully gone before re-binding ports.
 type managedProc struct {
-	cmd  *exec.Cmd
-	done chan struct{}
+	cmd   *exec.Cmd
+	done  chan struct{}
+	relay *relay // nil for a direct tunnel
+	// keyName is the managed key ssh was given, reported with an auth failure
+	// so the UI can offer that key's public half to authorize on the server.
+	keyName string
 }
 
 // Manager launches and tracks ssh child processes for each tunnel (keyed by
@@ -98,14 +102,28 @@ func (m *Manager) Start(name string) error {
 		}
 	}
 
-	args := sshArgs(ts.Tunnel, remote, key, appCfg, m.reg)
-
 	m.mu.Lock()
 	if _, exists := m.procs[name]; exists {
 		m.mu.Unlock()
 		return fmt.Errorf("tunnel %q is already running", name)
 	}
 	m.cancelTimerLocked(name)
+
+	// Unless the tunnel is direct, its connections run through a metering relay
+	// and ssh is pointed at the relay's side of the forward instead.
+	forward := forwardSpec(ts.Tunnel)
+	var rl *relay
+	if !ts.Direct {
+		rl, err = newRelay(ts.Tunnel, m.rt.Meter(name), m.logger.With("tunnel", name))
+		if err != nil {
+			m.mu.Unlock()
+			m.rt.SetFailure(name, Failure{Kind: FailurePortUnavailable, Message: err.Error()})
+			return fmt.Errorf("start tunnel %s: %w", name, err)
+		}
+		forward = rl.forward
+	}
+	args := sshArgs(ts.Tunnel, forward, remote, key, appCfg, m.reg)
+
 	cmd := exec.CommandContext(m.baseCtx, "ssh", args...)
 	// On baseCtx cancellation (service shutdown) ask ssh to exit cleanly rather
 	// than the default SIGKILL, so it releases any -R remote-forward listener on
@@ -118,10 +136,16 @@ func (m *Manager) Start(name string) error {
 	cmd.Stderr = &stderr
 	if err := cmd.Start(); err != nil {
 		m.mu.Unlock()
+		if rl != nil {
+			rl.Close()
+		}
 		m.rt.SetError(name, err.Error())
 		return fmt.Errorf("start tunnel %s: %w", name, err)
 	}
-	mp := &managedProc{cmd: cmd, done: make(chan struct{})}
+	mp := &managedProc{cmd: cmd, done: make(chan struct{}), relay: rl}
+	if key != nil {
+		mp.keyName = key.Name
+	}
 	m.procs[name] = mp
 	m.desired[name] = true
 	m.rt.SetRunning(name, cmd.Process.Pid)
@@ -136,6 +160,11 @@ func (m *Manager) Start(name string) error {
 func (m *Manager) waitProcess(name string, mp *managedProc, stderr *bytes.Buffer, startedAt time.Time) {
 	defer close(mp.done)
 	waitErr := mp.cmd.Wait()
+	// Release the user-facing port together with the process, before anyone
+	// waiting on done (Stop/Restart) tries to bind it again.
+	if mp.relay != nil {
+		mp.relay.Close()
+	}
 	stderrText := strings.TrimSpace(stderr.String())
 
 	m.mu.Lock()
@@ -159,9 +188,9 @@ func (m *Manager) waitProcess(name string, mp *managedProc, stderr *bytes.Buffer
 	}
 
 	if waitErr != nil {
-		diagnostic := diagnoseSSHFailure(stderrText)
+		kind, diagnostic := classifySSHFailure(stderrText)
 		m.logger.Warn("tunnel exited", "name", name, "err", waitErr, "stderr", stderrText, "diagnostic", diagnostic)
-		m.rt.SetError(name, diagnostic)
+		m.rt.SetFailure(name, Failure{Kind: kind, Message: diagnostic, Key: mp.keyName})
 	} else {
 		m.rt.SetStopped(name)
 	}
@@ -222,7 +251,9 @@ func (m *Manager) Command(name string) (TunnelCommandPreview, error) {
 	if err != nil {
 		return TunnelCommandPreview{}, err
 	}
-	args := sshArgs(ts.Tunnel, remote, nil, appCfg, m.reg)
+	// The preview shows the tunnel's own forward spec, never the relay's
+	// internal one: it is the command a user would run by hand.
+	args := sshArgs(ts.Tunnel, forwardSpec(ts.Tunnel), remote, nil, appCfg, m.reg)
 	return TunnelCommandPreview{
 		Command: shellCommand("ssh", args),
 		Args:    args,
@@ -388,9 +419,15 @@ func (m *Manager) lookupTunnel(name string) (TunnelStatus, config.Remote, *confi
 	return ts, remote, key, appCfg, nil
 }
 
-func sshArgs(tunnel config.Tunnel, remote config.Remote, key *config.SSHKey, appCfg config.AppConfig, reg *Registry) []string {
-	forward := fmt.Sprintf("%s:%d:%s:%d", tunnel.BindAddress, tunnel.BindPort, tunnel.TargetHost, tunnel.TargetPort)
+// forwardSpec is the tunnel's own -L/-R spec, as ssh would take it directly.
+func forwardSpec(t config.Tunnel) string {
+	return fmt.Sprintf("%s:%d:%s:%d", t.BindAddress, t.BindPort, t.TargetHost, t.TargetPort)
+}
 
+// sshArgs builds the ssh invocation for a tunnel. forward is the -L/-R spec to
+// pass: the tunnel's own (forwardSpec) for a direct tunnel and the command
+// preview, or the relay's internal one for a metered tunnel.
+func sshArgs(tunnel config.Tunnel, forward string, remote config.Remote, key *config.SSHKey, appCfg config.AppConfig, reg *Registry) []string {
 	args := []string{
 		"-N",
 		"-o", "BatchMode=yes",
@@ -475,35 +512,64 @@ func ensurePrivateKeyFile(path string, mode os.FileMode) error {
 	return nil
 }
 
-func diagnoseSSHFailure(stderr string) string {
+// failureRule maps ssh stderr to a failure kind and a plain-language
+// diagnostic. Rules are tried in order; the first whose match reports true wins.
+type failureRule struct {
+	kind    FailureKind
+	match   func(lower string) bool
+	message string
+}
+
+func containsAny(subs ...string) func(string) bool {
+	return func(lower string) bool {
+		for _, sub := range subs {
+			if strings.Contains(lower, sub) {
+				return true
+			}
+		}
+		return false
+	}
+}
+
+var failureRules = []failureRule{
+	{FailureHostKeyUnknown, containsAny("host key verification failed"),
+		"host key verification failed; trust the remote host key or adjust app.ssh_host_key_policy"},
+	{FailureHostKeyChanged, containsAny("remote host identification has changed", "offending", "man-in-the-middle"),
+		"remote host key changed; inspect the server and refresh the configured known_hosts file"},
+	{FailurePasswordOnly, func(lower string) bool {
+		return strings.Contains(lower, "permission denied") &&
+			(strings.Contains(lower, "password") || strings.Contains(lower, "keyboard-interactive"))
+	}, "ssh authentication failed; the remote requires password/keyboard-interactive auth, which the service cannot use because it runs ssh non-interactively — configure key-based authentication for this remote"},
+	{FailureAuth, containsAny("permission denied"),
+		"ssh authentication failed; verify keys, agent access, and remote user permissions"},
+	{FailureDNS, containsAny("could not resolve hostname", "name or service not known"),
+		"ssh remote hostname could not be resolved; verify the remote host setting"},
+	{FailureRefused, containsAny("connection refused"),
+		"ssh connection refused; verify the remote host, port, and sshd availability"},
+	{FailureNetwork, containsAny("connection timed out", "operation timed out", "no route to host"),
+		"ssh network connection failed; verify reachability to the remote host"},
+	{FailurePortUnavailable, containsAny("remote port forwarding failed", "address already in use", "cannot listen to port", "could not request local forwarding"),
+		"the forwarded port could not be opened (it is probably already in use); choose another bind port or free the existing one"},
+}
+
+// classifySSHFailure turns ssh's stderr into a failure kind and a diagnostic.
+// Unrecognised output is passed through verbatim with no kind.
+func classifySSHFailure(stderr string) (FailureKind, string) {
 	if stderr == "" {
-		return "ssh exited without diagnostic output"
+		return "", "ssh exited without diagnostic output"
 	}
 	lower := strings.ToLower(stderr)
-	switch {
-	case strings.Contains(lower, "host key verification failed"):
-		return "host key verification failed; trust the remote host key or adjust app.ssh_host_key_policy"
-	case strings.Contains(lower, "remote host identification has changed"),
-		strings.Contains(lower, "offending"),
-		strings.Contains(lower, "man-in-the-middle"):
-		return "remote host key changed; inspect the server and refresh the configured known_hosts file"
-	case strings.Contains(lower, "permission denied"):
-		if strings.Contains(lower, "password") || strings.Contains(lower, "keyboard-interactive") {
-			return "ssh authentication failed; the remote requires password/keyboard-interactive auth, which the service cannot use because it runs ssh non-interactively — configure key-based authentication for this remote"
+	for _, rule := range failureRules {
+		if rule.match(lower) {
+			return rule.kind, rule.message
 		}
-		return "ssh authentication failed; verify keys, agent access, and remote user permissions"
-	case strings.Contains(lower, "could not resolve hostname"),
-		strings.Contains(lower, "name or service not known"):
-		return "ssh remote hostname could not be resolved; verify the remote host setting"
-	case strings.Contains(lower, "connection refused"):
-		return "ssh connection refused; verify the remote host, port, and sshd availability"
-	case strings.Contains(lower, "connection timed out"),
-		strings.Contains(lower, "operation timed out"),
-		strings.Contains(lower, "no route to host"):
-		return "ssh network connection failed; verify reachability to the remote host"
-	default:
-		return stderr
 	}
+	return "", stderr
+}
+
+func diagnoseSSHFailure(stderr string) string {
+	_, msg := classifySSHFailure(stderr)
+	return msg
 }
 
 var shellSafeArgPattern = regexp.MustCompile(`^[A-Za-z0-9_@%+=:,./-]+$`)

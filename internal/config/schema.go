@@ -58,6 +58,9 @@ type SSHKey struct {
 	// never persisted to config.yaml (yaml:"-"); the registry populates it on
 	// read from the managed `<file>.pub` so callers can copy it to target hosts.
 	Public string `yaml:"-" json:"public_key,omitempty"`
+	// SystemDefault marks the key designated as app.system_default_key. Like
+	// Public it is derived on read and never persisted.
+	SystemDefault bool `yaml:"-" json:"system_default,omitempty"`
 }
 
 // Remote is a reusable SSH target server definition, keyed by its unique Name.
@@ -90,5 +93,11 @@ type Tunnel struct {
 	TargetPort  int             `yaml:"target_port"  json:"target_port"`
 	SSHOptions  []string        `yaml:"ssh_options"  json:"ssh_options,omitempty"`
 	AutoStart   bool            `yaml:"auto_start"   json:"auto_start"`
-	Description string          `yaml:"description"  json:"description,omitempty"`
+	// Direct hands the user-facing listener straight to ssh instead of routing
+	// the forward through the service's in-process relay. The relay is what
+	// meters traffic, so a direct tunnel reports no speed or byte counts; it
+	// exists as an escape hatch for setups where the extra loopback hop is
+	// undesirable.
+	Direct      bool   `yaml:"direct,omitempty"      json:"direct,omitempty"`
+	Description string `yaml:"description"  json:"description,omitempty"`
 }

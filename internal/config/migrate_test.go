@@ -1,6 +1,11 @@
 package config
 
-import "testing"
+import (
+	"reflect"
+	"testing"
+
+	"gopkg.in/yaml.v3"
+)
 
 // TestMigrateLegacyConfigRewritesReferences verifies that a legacy id-keyed
 // config is rewritten to be name-keyed, with key_id / remote_id references
@@ -93,5 +98,28 @@ func TestValidateNameRejectsBadNames(t *testing.T) {
 		if err := ValidateName("tunnel", name); err != nil {
 			t.Fatalf("expected ValidateName(%q) to pass, got %v", name, err)
 		}
+	}
+}
+
+// TestParseConfigPreservesEveryTunnelField guards the compat layer: loading
+// goes through compatTunnel, so a Tunnel field it does not mirror would be
+// silently dropped on the next load/persist cycle.
+func TestParseConfigPreservesEveryTunnelField(t *testing.T) {
+	want := Tunnel{
+		Name: "pg", Remote: "bastion", Direction: DirectionRemote,
+		BindAddress: "0.0.0.0", BindPort: 15432, TargetHost: "db.internal", TargetPort: 5432,
+		SSHOptions: []string{"-o", "Compression=yes"}, AutoStart: true, Direct: true,
+		Description: "primary database",
+	}
+	data, err := yaml.Marshal(Config{Tunnels: []Tunnel{want}})
+	if err != nil {
+		t.Fatalf("marshal: %v", err)
+	}
+	cfg, err := parseConfig(data)
+	if err != nil {
+		t.Fatalf("parseConfig: %v", err)
+	}
+	if !reflect.DeepEqual(cfg.Tunnels[0], want) {
+		t.Fatalf("round-trip lost data:\n got %+v\nwant %+v", cfg.Tunnels[0], want)
 	}
 }

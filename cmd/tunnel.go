@@ -49,7 +49,7 @@ func tunnelListCmd() *cobra.Command {
 				return json.NewEncoder(os.Stdout).Encode(tunnels)
 			}
 			tw := tabwriter.NewWriter(os.Stdout, 0, 4, 2, ' ', 0)
-			fmt.Fprintln(tw, "NAME\tDIR\tREMOTE\tBIND\tTARGET\tAUTO\tSTATE\tPID")
+			fmt.Fprintln(tw, "NAME\tDIR\tREMOTE\tBIND\tTARGET\tAUTO\tSTATE\tPID\tUP\tDOWN")
 			for _, t := range tunnels {
 				bind := fmt.Sprintf("%s:%d", t.BindAddress, t.BindPort)
 				target := fmt.Sprintf("%s:%d", t.TargetHost, t.TargetPort)
@@ -57,8 +57,15 @@ func tunnelListCmd() *cobra.Command {
 				if t.PID != 0 {
 					pid = fmt.Sprintf("%d", t.PID)
 				}
-				fmt.Fprintf(tw, "%s\t%s\t%s\t%s\t%s\t%v\t%s\t%s\n",
-					t.Name, t.Direction, t.Remote, bind, target, t.AutoStart, t.State, pid)
+				up, down := "-", "-"
+				switch {
+				case t.Direct:
+					up, down = "direct", "direct"
+				case t.Traffic != nil:
+					up, down = humanRate(t.Traffic.UpRate), humanRate(t.Traffic.DownRate)
+				}
+				fmt.Fprintf(tw, "%s\t%s\t%s\t%s\t%s\t%v\t%s\t%s\t%s\t%s\n",
+					t.Name, t.Direction, t.Remote, bind, target, t.AutoStart, t.State, pid, up, down)
 			}
 			return tw.Flush()
 		},
@@ -71,7 +78,7 @@ func tunnelAddCmd() *cobra.Command {
 	var (
 		name, remote, bindAddr, targetHost, desc, dir string
 		bindPort, targetPort                          int
-		autoStart                                     bool
+		autoStart, direct                             bool
 	)
 	cmd := &cobra.Command{
 		Use:   "add",
@@ -90,6 +97,7 @@ func tunnelAddCmd() *cobra.Command {
 				TargetHost:  targetHost,
 				TargetPort:  targetPort,
 				AutoStart:   autoStart,
+				Direct:      direct,
 				Description: desc,
 			}
 			if err := client.request(http.MethodPost, "/api/tunnels", t, nil); err != nil {
@@ -107,6 +115,7 @@ func tunnelAddCmd() *cobra.Command {
 	cmd.Flags().StringVar(&targetHost, "target-host", "", "target host (required)")
 	cmd.Flags().IntVar(&targetPort, "target-port", 0, "target port (required)")
 	cmd.Flags().BoolVar(&autoStart, "auto-start", false, "auto-start with service and keep alive")
+	cmd.Flags().BoolVar(&direct, "direct", false, "let ssh own the port directly (no traffic metering)")
 	cmd.Flags().StringVar(&desc, "description", "", "description")
 	_ = cmd.MarkFlagRequired("name")
 	_ = cmd.MarkFlagRequired("remote")
@@ -120,7 +129,7 @@ func tunnelUpdateCmd() *cobra.Command {
 	var (
 		name, remote, bindAddr, targetHost, desc, dir string
 		bindPort, targetPort                          int
-		autoStart                                     bool
+		autoStart, direct                             bool
 	)
 	cmd := &cobra.Command{
 		Use:   "update <name>",
@@ -161,6 +170,9 @@ func tunnelUpdateCmd() *cobra.Command {
 			if c.Flags().Changed("auto-start") {
 				t.AutoStart = autoStart
 			}
+			if c.Flags().Changed("direct") {
+				t.Direct = direct
+			}
 			if desc != "" {
 				t.Description = desc
 			}
@@ -179,6 +191,7 @@ func tunnelUpdateCmd() *cobra.Command {
 	cmd.Flags().StringVar(&targetHost, "target-host", "", "target host")
 	cmd.Flags().IntVar(&targetPort, "target-port", 0, "target port")
 	cmd.Flags().BoolVar(&autoStart, "auto-start", false, "auto-start with service")
+	cmd.Flags().BoolVar(&direct, "direct", false, "let ssh own the port directly (no traffic metering)")
 	cmd.Flags().StringVar(&desc, "description", "", "description")
 	return cmd
 }
