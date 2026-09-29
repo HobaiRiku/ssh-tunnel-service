@@ -76,6 +76,7 @@ func TestDiagnoseSSHFailure(t *testing.T) {
 		{name: "connection refused", stderr: "ssh: connect to host ssh.example.com port 22: Connection refused", want: "connection refused"},
 		{name: "connection timed out", stderr: "ssh: connect to host ssh.example.com port 22: Connection timed out", want: "network connection failed"},
 		{name: "no diagnostic output", stderr: "", want: "ssh exited without diagnostic output"},
+		{name: "remote port busy", stderr: "Error: remote port forwarding failed for listen port 8080", want: "could not be opened"},
 	}
 
 	for _, tc := range cases {
@@ -85,6 +86,26 @@ func TestDiagnoseSSHFailure(t *testing.T) {
 				t.Fatalf("diagnoseSSHFailure(%q) = %q, want substring %q", tc.stderr, got, tc.want)
 			}
 		})
+	}
+}
+
+func TestClassifySSHFailureKinds(t *testing.T) {
+	cases := map[string]FailureKind{
+		"Host key verification failed.":                                FailureHostKeyUnknown,
+		"WARNING: REMOTE HOST IDENTIFICATION HAS CHANGED!":             FailureHostKeyChanged,
+		"u@h: Permission denied (publickey,password).":                 FailurePasswordOnly,
+		"u@h: Permission denied (publickey).":                          FailureAuth,
+		"ssh: Could not resolve hostname h: Name or service not known": FailureDNS,
+		"ssh: connect to host h port 22: Connection refused":           FailureRefused,
+		"ssh: connect to host h port 22: No route to host":             FailureNetwork,
+		"Error: remote port forwarding failed for listen port 8080":    FailurePortUnavailable,
+		"bind [127.0.0.1]:15432: Address already in use":               FailurePortUnavailable,
+		"something nobody has seen before":                             "",
+	}
+	for stderr, want := range cases {
+		if got, _ := classifySSHFailure(stderr); got != want {
+			t.Errorf("classifySSHFailure(%q) kind = %q, want %q", stderr, got, want)
+		}
 	}
 }
 
@@ -310,7 +331,7 @@ func TestStartMarksPasswordRemoteAsError(t *testing.T) {
 		App:     config.AppConfig{SSHHostKeyPolicy: config.SSHHostKeyPolicyInsecure},
 		Keys:    []config.SSHKey{{Name: "deploy-key", File: "deploy-key"}},
 		Remotes: []config.Remote{{Name: "remote-a", Host: "ssh.example.com", Port: 22, User: "ubuntu", Key: "deploy-key"}},
-		Tunnels: []config.Tunnel{{Name: "tunnel-a", Remote: "remote-a", Direction: config.DirectionLocal, BindAddress: "127.0.0.1", BindPort: 15432, TargetHost: "127.0.0.1", TargetPort: 5432}},
+		Tunnels: []config.Tunnel{{Name: "tunnel-a", Remote: "remote-a", Direction: config.DirectionLocal, BindAddress: "127.0.0.1", BindPort: freePort(t), TargetHost: "127.0.0.1", TargetPort: 5432}},
 	}
 
 	rt := NewRuntime()
@@ -338,5 +359,9 @@ func TestStartMarksPasswordRemoteAsError(t *testing.T) {
 	}
 	if !strings.Contains(errMsg, "requires password/keyboard-interactive auth") {
 		t.Fatalf("expected password diagnostic, got %q", errMsg)
+	}
+	ts, _ := reg.GetTunnel("tunnel-a")
+	if ts.ErrorKind != FailurePasswordOnly || ts.ErrorKey != "deploy-key" {
+		t.Fatalf("expected error_kind %q with key deploy-key, got %q / %q", FailurePasswordOnly, ts.ErrorKind, ts.ErrorKey)
 	}
 }

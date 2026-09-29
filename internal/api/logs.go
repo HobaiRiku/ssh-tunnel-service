@@ -14,12 +14,23 @@ import (
 	"github.com/gorilla/websocket"
 )
 
-// logUpgrader upgrades the log-stream request to a WebSocket. The handshake has
-// already passed tokenAuth (the Authorization header is checked before the
-// upgrade), so origin checks add nothing here for a loopback management API.
-var logUpgrader = websocket.Upgrader{
-	CheckOrigin: func(*http.Request) bool { return true },
+// wsUpgrader upgrades the streaming endpoints (logs, traffic) to WebSockets.
+// The handshake has already passed tokenAuth, so origin checks add nothing here
+// for a loopback management API.
+//
+// Browsers cannot set an Authorization header on a WebSocket, so the SPA
+// authenticates by offering the subprotocols ["ssh-tunnel", "bearer.<token>"]
+// (see tokenAuth); the server selects "ssh-tunnel", which the browser requires
+// to be echoed back. The CLI keeps using the header and offers no subprotocol.
+var wsUpgrader = websocket.Upgrader{
+	CheckOrigin:  func(*http.Request) bool { return true },
+	Subprotocols: []string{wsSubprotocol},
 }
+
+const (
+	wsSubprotocol  = "ssh-tunnel"
+	wsBearerPrefix = "bearer."
+)
 
 // streamLogs serves GET /api/logs/stream: it sends the last `lines` lines of the
 // service log, then (unless follow=false) streams appended content as it is
@@ -34,7 +45,7 @@ func streamLogs(logFile string) gin.HandlerFunc {
 		}
 		follow := c.Query("follow") != "false"
 
-		conn, err := logUpgrader.Upgrade(c.Writer, c.Request, nil)
+		conn, err := wsUpgrader.Upgrade(c.Writer, c.Request, nil)
 		if err != nil {
 			return
 		}

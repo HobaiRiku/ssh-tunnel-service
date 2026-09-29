@@ -201,11 +201,10 @@ func (a *apiClient) resolveToken() error {
 	return nil
 }
 
-// streamLogs connects to the instance's /api/logs/stream WebSocket and writes
-// every received chunk to out until ctx is cancelled or the server closes.
-func (a *apiClient) streamLogs(ctx context.Context, lines int, follow bool, out io.Writer) error {
-	wsURL := "ws" + strings.TrimPrefix(a.base, "http") +
-		fmt.Sprintf("/api/logs/stream?lines=%d&follow=%t", lines, follow)
+// dialStream opens one of the instance's WebSocket endpoints (path includes the
+// query string), authenticating with the bearer token.
+func (a *apiClient) dialStream(ctx context.Context, path, what string) (*websocket.Conn, error) {
+	wsURL := "ws" + strings.TrimPrefix(a.base, "http") + path
 	header := http.Header{}
 	if a.token != "" {
 		header.Set("Authorization", "Bearer "+a.token)
@@ -213,9 +212,19 @@ func (a *apiClient) streamLogs(ctx context.Context, lines int, follow bool, out 
 	conn, resp, err := websocket.DefaultDialer.DialContext(ctx, wsURL, header)
 	if err != nil {
 		if resp != nil && resp.StatusCode == http.StatusUnauthorized {
-			return errors.New("unauthorized: could not authenticate to the log stream")
+			return nil, fmt.Errorf("unauthorized: could not authenticate to the %s", what)
 		}
-		return fmt.Errorf("no service is running at %s — start it with `ssh-tunnel start` (or run `ssh-tunnel run` in the foreground)", a.listen)
+		return nil, fmt.Errorf("no service is running at %s — start it with `ssh-tunnel start` (or run `ssh-tunnel run` in the foreground)", a.listen)
+	}
+	return conn, nil
+}
+
+// streamLogs connects to the instance's /api/logs/stream WebSocket and writes
+// every received chunk to out until ctx is cancelled or the server closes.
+func (a *apiClient) streamLogs(ctx context.Context, lines int, follow bool, out io.Writer) error {
+	conn, err := a.dialStream(ctx, fmt.Sprintf("/api/logs/stream?lines=%d&follow=%t", lines, follow), "log stream")
+	if err != nil {
+		return err
 	}
 	defer conn.Close()
 

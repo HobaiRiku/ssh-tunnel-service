@@ -7,10 +7,17 @@ Cross-platform Go daemon that manages SSH `-L` / `-R` port-forwarding tunnels vi
 - **Remotes** — reusable SSH server definitions (host, port, user, optional managed key)
 - **Keys** — paste or upload private keys into the runtime config directory, then associate them with remotes
 - **Tunnels** — `-L` (local forward) or `-R` (remote forward) rules referencing a remote
+- **Overview** — every tunnel as a card grouped by server, described in plain language ("this machine → service reached from prod"), with an on/off switch, copy-address, live speed sparkline and health filters; works as an installable phone app
+- **Guided setup & fixes** — a three-step wizard (goal → service template → confirm a plain sentence) creates tunnels; failed tunnels explain the cause and offer the matching fix (copy the key's authorize command, edit the server, change the port), driven by the API's `error_kind`
+- **Tunnel details** — a side panel per tunnel with five minutes of traffic, totals, the fix for a failure, settings and the equivalent ssh command
+- **Servers & keys at a glance** — server cards show how each logs in, the health and live traffic of its tunnels, and start a new tunnel through it; key cards show which servers use a key, mark the system default, and copy the public key or a ready-made authorize command
+- **Live map** — one calm lane per tunnel between this machine and its server (grouped, never crossing), with moving dots for real traffic; stopped tunnels hidden unless asked for, and the map can be collapsed
 - **Topology view** — larger remote groups, direct click selection, and tunnel actions from the topology canvas
 - **YAML config** — all config driven by `config.yaml` in the data root (see [Configuration](#configuration))
 - **API token auth** — generated on first run; injected into the web UI automatically
 - **Non-interactive SSH** — service-managed `known_hosts` trust store with configurable host-key policy
+- **Live traffic** — per-tunnel and total speed, open connections and bytes moved, in the web UI, the API and `ssh-tunnel top` (see [Traffic metering](#traffic-metering))
+- **Traffic history** — totals and history are saved to disk, so today / this month / all-time and 24-hour, 30-day and 12-month charts survive restarts (`ssh-tunnel usage`, web UI tunnel details)
 - **Equivalent SSH command preview** — inspect the concrete ssh command the service will launch for each tunnel
 - **Daemon management** — install/start/stop/uninstall as a system service (launchd, systemd, SCM)
 - **PWA** — installable as a progressive web app from the browser
@@ -192,6 +199,7 @@ Commands:
   stop        Stop the installed service (--user)
   status      Show the attached instance's status (--json supported)
   tail        Stream the attached instance's log over the API (WebSocket)
+  top         Live per-tunnel and total traffic (--once, --json [--history])
   connect     Choose which instance the CLI attaches to (--show / --clear)
 
   remote      Manage remote SSH targets
@@ -209,8 +217,8 @@ Commands:
     pub         Print a key's public key (authorized_keys line)
 
   tunnel      Manage SSH tunnel definitions
-    list      List tunnels and live state (state + pid from the running service)
-    add       Add a tunnel
+    list      List tunnels and live state (state, pid and current speed)
+    add       Add a tunnel (--direct to opt out of traffic metering)
     update    Update a tunnel field (running tunnels are restarted automatically)
     rm        Remove a tunnel
     start     Start a tunnel via the running service
@@ -367,6 +375,55 @@ A tunnel with `auto_start: true` is **supervised**: it starts immediately when
 added or enabled, starts with the service, and is automatically reconnected
 (with exponential backoff) if the underlying `ssh` process exits unexpectedly.
 Stopping a tunnel cancels supervision until it is started again.
+
+### Traffic metering
+
+`ssh` still carries every tunnel, but by default the service routes the
+plaintext loopback side of each forward through a small in-process relay so it
+can count bytes:
+
+- **`-L`** — the service listens on the tunnel's `bind_address:bind_port` and
+  hands each connection to ssh, which listens on an internal loopback port.
+- **`-R`** — ssh forwards the remote port to a loopback port the service owns,
+  and the service dials `target_host:target_port`.
+
+The user-facing port is bound only while the tunnel runs, exactly as before, and
+the equivalent-command preview still shows the tunnel's own `-L`/`-R` spec.
+"Up" is traffic sent **towards** the forwarded service and "down" is traffic
+coming **back** from it, for both directions. Byte and connection totals are
+cumulative since the tunnel was first metered and survive reconnects, renames
+and service restarts; rates are sampled every second and the last five minutes
+are kept in memory for live charts.
+
+Traffic is also kept **on disk** in `<data root>/data/traffic.json` (owner-only):
+the totals plus per-minute buckets for 24 hours, per-hour for 32 days and
+per-day for 400 days — only slots that saw traffic are stored, so idle tunnels
+cost nothing. The file is written at most once a minute when something changed
+and again on a clean shutdown; a crash or `kill -9` can lose up to a minute. A
+tunnel removed from `config.yaml` while the service was down has its bytes
+folded into the all-tunnels total. An unreadable file is moved aside to
+`traffic.json.corrupt` and the service starts counting afresh.
+
+- `ssh-tunnel top` — live table, refreshed every second (`--once` for a single
+  frame, `--json` for one snapshot, `--json --history` to include samples)
+- `ssh-tunnel usage` — per tunnel: today, this month and total (`--json`)
+- `ssh-tunnel tunnel list --json` — each running or previously run tunnel
+  carries a `traffic` object (`up_bytes`, `down_bytes`, `up_rate`, `down_rate`,
+  `active_conns`, `total_conns`; rates in bytes/s)
+- `GET /api/traffic[?history=true]` and the WebSocket `GET /api/traffic/stream`
+  (one snapshot per second)
+- `GET /api/traffic/usage` — today / this month / all-time per tunnel and in total
+- `GET /api/traffic/history?range=24h|30d|1y[&tunnel=<name>]` — `[start, up, down]`
+  buckets per minute, hour or day (all tunnels together when `tunnel` is omitted)
+
+`GET /api/ports/free?from=N` returns the first loopback port at or above `N`
+that is bindable and not claimed by another `-L` tunnel; the web UI's new-tunnel
+wizard uses it to suggest a local port.
+
+Set `direct: true` on a tunnel (`tunnel add|update --direct`) to let ssh own
+the port itself, as older versions did. A direct tunnel is not metered and
+reports no `traffic`. Forwards you add yourself through `ssh_options` are never
+metered.
 
 ## Release automation
 

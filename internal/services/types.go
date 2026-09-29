@@ -29,12 +29,44 @@ const (
 	StateError   TunnelState = "error"
 )
 
+// FailureKind classifies why a tunnel is in the error state, so clients can
+// offer a matching fix (authorize a key, edit the server, pick another port…).
+// An empty kind means the cause was not recognised; the message still says
+// what happened.
+type FailureKind string
+
+const (
+	FailureAuth            FailureKind = "auth"
+	FailurePasswordOnly    FailureKind = "password_only"
+	FailureHostKeyUnknown  FailureKind = "host_key_unknown"
+	FailureHostKeyChanged  FailureKind = "host_key_changed"
+	FailureDNS             FailureKind = "dns"
+	FailureRefused         FailureKind = "refused"
+	FailureNetwork         FailureKind = "network"
+	FailurePortUnavailable FailureKind = "port_unavailable"
+)
+
+// Failure describes a tunnel's last failure.
+type Failure struct {
+	Kind    FailureKind
+	Message string
+	// Key is the managed key that was offered, when one was.
+	Key string
+}
+
 // TunnelStatus pairs a config.Tunnel definition with live runtime information.
 type TunnelStatus struct {
 	config.Tunnel
 	State TunnelState `json:"state"`
 	PID   int         `json:"pid,omitempty"`
 	Error string      `json:"error,omitempty"`
+	// ErrorKind classifies Error (see FailureKind); ErrorKey names the managed
+	// key the service authenticated with, for auth failures.
+	ErrorKind FailureKind `json:"error_kind,omitempty"`
+	ErrorKey  string      `json:"error_key,omitempty"`
+	// Traffic is the tunnel's live traffic, or nil when it has never been
+	// metered (a direct tunnel, or one that has not been started yet).
+	Traffic *TrafficCounters `json:"traffic,omitempty"`
 }
 
 // TunnelCommandPreview is the shell command equivalent for a configured tunnel.
