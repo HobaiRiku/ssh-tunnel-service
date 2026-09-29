@@ -38,8 +38,13 @@ func TestEnsureSystemDefaultKeyGeneratesAndProtects(t *testing.T) {
 	if got := reg.AppConfig().SystemDefaultKey; got != name {
 		t.Fatalf("app.system_default_key = %q, want %q", got, name)
 	}
-	if _, err := reg.GetKey(name); err != nil {
+	if key, err := reg.GetKey(name); err != nil {
 		t.Fatalf("generated key not found: %v", err)
+	} else if !key.SystemDefault {
+		t.Fatalf("designated key should be flagged system_default")
+	}
+	if keys := reg.ListKeys(); len(keys) != 1 || !keys[0].SystemDefault {
+		t.Fatalf("ListKeys should flag the designated key: %+v", keys)
 	}
 
 	// Idempotent: a second call must not create a different key.
@@ -103,5 +108,5 @@ func (m *Manager) mustArgs(t *testing.T, name string) string {
 	if err != nil {
 		t.Fatalf("lookupTunnel: %v", err)
 	}
-	return strings.Join(sshArgs(ts.Tunnel, remote, key, appCfg, m.reg), " ")
+	return strings.Join(sshArgs(ts.Tunnel, forwardSpec(ts.Tunnel), remote, key, appCfg, m.reg), " ")
 }

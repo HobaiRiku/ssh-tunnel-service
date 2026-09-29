@@ -93,8 +93,11 @@ that bind it.
 `key list --json`:
 
 ```json
-[{ "name": "deploy", "file": "deploy", "description": "Imported from ~/.ssh/id_ed25519", "public_key": "ssh-ed25519 AAAA… host" }]
+[{ "name": "deploy", "file": "deploy", "description": "Imported from ~/.ssh/id_ed25519", "public_key": "ssh-ed25519 AAAA… host", "system_default": true }]
 ```
+
+`system_default` is present (and `true`) only on the key designated by
+`key set-default`.
 
 The private key itself is never returned by the API or printed.
 
@@ -103,8 +106,8 @@ The private key itself is never returned by the API or printed.
 | Command | Flags |
 | --- | --- |
 | `tunnel list [--json]` | — |
-| `tunnel add` | `--name` (required), `--remote` (required), `--direction` (`-L` default, or `-R`), `--bind-addr` (default `127.0.0.1`), `--bind-port` (required), `--target-host` (required), `--target-port` (required), `--auto-start`, `--description` |
-| `tunnel update <name>` | `--name` (rename), `--remote`, `--direction`, `--bind-addr`, `--bind-port`, `--target-host`, `--target-port`, `--auto-start`, `--description` |
+| `tunnel add` | `--name` (required), `--remote` (required), `--direction` (`-L` default, or `-R`), `--bind-addr` (default `127.0.0.1`), `--bind-port` (required), `--target-host` (required), `--target-port` (required), `--auto-start`, `--direct`, `--description` |
+| `tunnel update <name>` | `--name` (rename), `--remote`, `--direction`, `--bind-addr`, `--bind-port`, `--target-host`, `--target-port`, `--auto-start`, `--direct`, `--description` |
 | `tunnel rm <name>` | — |
 | `tunnel start <name>` | — |
 | `tunnel stop <name>` | — |
@@ -151,23 +154,66 @@ ssh-tunnel tunnel list --json
   "target_port": 5432,
   "auto_start": true,
   "state": "running",
-  "pid": 53293
+  "pid": 53293,
+  "traffic": {
+    "up_bytes": 18230, "down_bytes": 5120044,
+    "up_rate": 0, "down_rate": 204800,
+    "active_conns": 1, "total_conns": 7
+  }
 }]
 ```
 
 `state` is one of `running`, `stopped`, `error`. Empty optional fields
-(`description`, `ssh_options`, `pid`, `error`) are omitted rather than sent as
+(`description`, `ssh_options`, `pid`, `error`, `direct`, `traffic`) are omitted rather than sent as
 empty values, so read them defensively. `error` is already a plain-language
 diagnosis, not raw ssh stderr:
 
 ```json
 { "name": "prod-pg", "remote": "prod-db", "state": "error",
-  "error": "ssh connection refused; verify the remote host, port, and sshd availability" }
+  "error": "ssh connection refused; verify the remote host, port, and sshd availability",
+  "error_kind": "refused" }
 ```
+
+`error_kind` classifies the failure when the cause is recognised: `auth` (key
+rejected), `password_only` (server only offers password auth), `host_key_unknown`,
+`host_key_changed`, `dns`, `refused`, `network`, `port_unavailable` (bind port in
+use or not permitted, on either side). For `auth`/`password_only`, `error_key`
+names the managed key that was offered — `ssh-tunnel key pub <error_key>` prints
+the line to add to the server's `authorized_keys`. An unrecognised failure has
+no `error_kind`; read `error`.
 
 `ssh_options` (extra `-o` flags per tunnel) exists in the config and API but has
 no `tunnel add`/`update` flag — set it from the web UI or the REST API. It is
 rarely needed: keepalives are already applied to every tunnel.
+
+`traffic` is present once a metered tunnel has run (it is absent for a
+`direct` tunnel or one never started). "up" is bytes sent towards the forwarded
+service, "down" bytes coming back from it — for `-L` and `-R` alike. Rates are
+bytes/s over the last second; byte and connection totals are cumulative since
+the tunnel was first metered and survive reconnects, renames and service
+restarts (the service saves them to disk).
+
+## Traffic
+
+```bash
+ssh-tunnel top                    # live table, refreshed every second
+ssh-tunnel top --once             # one frame
+ssh-tunnel top --json [--history] # one /api/traffic snapshot (+ 5 min of 1 s samples)
+ssh-tunnel usage [--json]         # per tunnel: today, this month, total
+```
+
+`usage --json` returns `{at, total, tunnels: {<name>: {today, month, all}}}`,
+each period being `{up_bytes, down_bytes}`. "Today" and "this month" follow the
+service machine's local time. Longer history is served by
+`GET /api/traffic/history?range=24h|30d|1y[&tunnel=<name>]` as
+`points: [[start_unix_seconds, up_bytes, down_bytes], …]` in per-minute,
+per-hour or per-day buckets; slots without traffic are omitted.
+
+`top --json` returns `{at, interval_ms, total, tunnels: {<name>: {...}}, history?}`
+where `total` and each tunnel entry use the same fields as `traffic` above.
+A tunnel added with `--direct` lets ssh own the port itself; it is not metered
+and shows `direct` in the tables. Forwards added through `ssh_options` are never
+metered.
 
 ## Forward semantics
 
@@ -192,6 +238,13 @@ Every tunnel runs `ssh -N` with these fixed options, in this order:
 <host key policy options> [-i <key> -o IdentitiesOnly=yes]
 <direction> <forward spec> <tunnel ssh_options…> -p <port> <user>@<host>
 ```
+
+Unless the tunnel is `direct`, the forward spec ssh receives points at the
+service's metering relay rather than at the user-facing port: for `-L` ssh
+listens on an internal loopback port while the service owns
+`bind_address:bind_port`; for `-R` the remote port is forwarded to a loopback
+port the service owns, which then dials `target_host:target_port`. The
+equivalent-command preview always shows the tunnel's own spec.
 
 Consequences worth knowing:
 

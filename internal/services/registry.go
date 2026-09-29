@@ -2,8 +2,10 @@ package services
 
 import (
 	"fmt"
+	"net"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"sync"
 
@@ -57,6 +59,7 @@ func (r *Registry) ListKeys() []config.SSHKey {
 	copy(out, r.cfg.Keys)
 	for i := range out {
 		out[i].Public = r.publicKeyFor(out[i].File)
+		out[i].SystemDefault = out[i].Name == r.cfg.App.SystemDefaultKey
 	}
 	return out
 }
@@ -67,6 +70,7 @@ func (r *Registry) GetKey(name string) (config.SSHKey, error) {
 	for _, key := range r.cfg.Keys {
 		if key.Name == name {
 			key.Public = r.publicKeyFor(key.File)
+			key.SystemDefault = key.Name == r.cfg.App.SystemDefaultKey
 			return key, nil
 		}
 	}
@@ -339,8 +343,7 @@ func (r *Registry) ListTunnels() []TunnelStatus {
 	defer r.mu.RUnlock()
 	out := make([]TunnelStatus, 0, len(r.cfg.Tunnels))
 	for _, t := range r.cfg.Tunnels {
-		state, pid, errMsg := r.runtime.Get(t.Name)
-		out = append(out, TunnelStatus{Tunnel: t, State: state, PID: pid, Error: errMsg})
+		out = append(out, r.statusLocked(t))
 	}
 	return out
 }
@@ -350,11 +353,26 @@ func (r *Registry) GetTunnel(name string) (TunnelStatus, error) {
 	defer r.mu.RUnlock()
 	for _, t := range r.cfg.Tunnels {
 		if t.Name == name {
-			state, pid, errMsg := r.runtime.Get(t.Name)
-			return TunnelStatus{Tunnel: t, State: state, PID: pid, Error: errMsg}, nil
+			return r.statusLocked(t), nil
 		}
 	}
 	return TunnelStatus{}, fmt.Errorf("tunnel %q: %w", name, ErrNotFound)
+}
+
+// statusLocked composes a tunnel definition with its live runtime state and
+// traffic — the only way a TunnelStatus is built.
+func (r *Registry) statusLocked(t config.Tunnel) TunnelStatus {
+	state, pid, errMsg := r.runtime.Get(t.Name)
+	ts := TunnelStatus{Tunnel: t, State: state, PID: pid, Error: errMsg}
+	if f := r.runtime.LastFailure(t.Name); f.Kind != "" || f.Key != "" {
+		ts.ErrorKind, ts.ErrorKey = f.Kind, f.Key
+	}
+	// A direct tunnel is not metered; a meter left over from before it was
+	// switched to direct would only report stale numbers.
+	if !t.Direct {
+		ts.Traffic = r.runtime.TunnelTraffic(t.Name)
+	}
+	return ts
 }
 
 func (r *Registry) AddTunnel(t config.Tunnel) error {
@@ -416,6 +434,8 @@ func (r *Registry) UpdateTunnel(name string, update config.Tunnel) error {
 			r.mu.Unlock()
 			return err
 		}
+		// Carry the traffic meter across a rename so counters do not reset.
+		r.runtime.RenameTraffic(name, update.Name)
 		mgr := r.manager
 		r.mu.Unlock()
 		return applyTunnelState(mgr, name, update, wasRunning, fmt.Sprintf("tunnel %s updated", update.Name))
@@ -459,6 +479,7 @@ func (r *Registry) DeleteTunnel(name string) error {
 				r.mu.Unlock()
 				return err
 			}
+			r.runtime.DropTraffic(name)
 			mgr := r.manager
 			r.mu.Unlock()
 			// Cancel any pending reconnect supervision for the removed tunnel.
@@ -470,6 +491,36 @@ func (r *Registry) DeleteTunnel(name string) error {
 	}
 	r.mu.Unlock()
 	return fmt.Errorf("tunnel %q: %w", name, ErrNotFound)
+}
+
+// FreeLocalPort suggests a port for a new -L tunnel: the first port at or
+// above from that no configured -L tunnel claims and that can be bound on
+// loopback right now. It scans a small window so a suggestion stays close to
+// what the user asked for.
+func (r *Registry) FreeLocalPort(from int) (int, error) {
+	if from < 1 || from > 65535 {
+		return 0, fmt.Errorf("port must be 1-65535")
+	}
+	r.mu.RLock()
+	claimed := map[int]bool{}
+	for _, t := range r.cfg.Tunnels {
+		if t.Direction == config.DirectionLocal {
+			claimed[t.BindPort] = true
+		}
+	}
+	r.mu.RUnlock()
+	for port := from; port <= 65535 && port < from+500; port++ {
+		if claimed[port] {
+			continue
+		}
+		l, err := net.Listen("tcp", net.JoinHostPort("127.0.0.1", strconv.Itoa(port)))
+		if err != nil {
+			continue
+		}
+		_ = l.Close()
+		return port, nil
+	}
+	return 0, fmt.Errorf("no free port found from %d", from)
 }
 
 func requireRemote(cfg *config.Config, name string) error {

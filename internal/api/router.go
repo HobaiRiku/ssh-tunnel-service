@@ -7,10 +7,12 @@ import (
 	"net"
 	"net/http"
 	"os"
+	"strconv"
 	"strings"
 	"time"
 
 	"github.com/gin-gonic/gin"
+	"github.com/gorilla/websocket"
 
 	"ssh-tunnel-service/internal/config"
 	"ssh-tunnel-service/internal/services"
@@ -60,6 +62,11 @@ func NewRouter(opts Options) *gin.Engine {
 	api.GET("/version", func(c *gin.Context) { c.JSON(http.StatusOK, version.Current()) })
 	api.GET("/instance", instanceInfo(opts))
 	api.GET("/logs/stream", streamLogs(opts.LogFile))
+	api.GET("/traffic", trafficSnapshot(opts.Runtime))
+	api.GET("/traffic/stream", streamTraffic(opts.Context, opts.Runtime))
+	api.GET("/traffic/usage", trafficUsage(opts.Runtime))
+	api.GET("/traffic/history", trafficHistory(opts.Registry, opts.Runtime))
+	api.GET("/ports/free", freeLocalPort(opts.Registry))
 
 	keys := api.Group("/keys")
 	keys.GET("", listKeys(opts.Registry))
@@ -119,6 +126,25 @@ func instanceInfo(opts Options) gin.HandlerFunc {
 			"started_at":     opts.Started,
 			"uptime_seconds": uptime,
 		})
+	}
+}
+
+// freeLocalPort serves GET /api/ports/free?from=N: the first loopback port at
+// or above N that is bindable and not claimed by another -L tunnel, so the
+// new-tunnel form can suggest a working local port.
+func freeLocalPort(reg *services.Registry) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		from, err := strconv.Atoi(c.DefaultQuery("from", "10000"))
+		if err != nil {
+			c.JSON(http.StatusBadRequest, apiError(errors.New("from must be a port number")))
+			return
+		}
+		port, err := reg.FreeLocalPort(from)
+		if err != nil {
+			c.JSON(http.StatusBadRequest, apiError(err))
+			return
+		}
+		c.JSON(http.StatusOK, gin.H{"port": port})
 	}
 }
 
@@ -410,10 +436,26 @@ func tokenAuth(token string) gin.HandlerFunc {
 			return
 		}
 		auth := c.GetHeader("Authorization")
-		if !strings.HasPrefix(auth, "Bearer ") || auth[len("Bearer "):] != token {
-			c.AbortWithStatusJSON(http.StatusUnauthorized, apiError(errors.New("unauthorized")))
+		if strings.HasPrefix(auth, "Bearer ") && auth[len("Bearer "):] == token {
+			c.Next()
 			return
 		}
-		c.Next()
+		if websocket.IsWebSocketUpgrade(c.Request) && hasBearerSubprotocol(c.Request, token) {
+			c.Next()
+			return
+		}
+		c.AbortWithStatusJSON(http.StatusUnauthorized, apiError(errors.New("unauthorized")))
 	}
+}
+
+// hasBearerSubprotocol reports whether a WebSocket handshake offers the token
+// as a "bearer.<token>" subprotocol — the browser's only way to authenticate a
+// WebSocket without putting the token in the URL (see wsUpgrader).
+func hasBearerSubprotocol(r *http.Request, token string) bool {
+	for _, p := range websocket.Subprotocols(r) {
+		if p == wsBearerPrefix+token {
+			return true
+		}
+	}
+	return false
 }

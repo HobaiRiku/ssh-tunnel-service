@@ -45,7 +45,9 @@ export default defineConfig({
     proxy: {
       '/api': {
         target: 'http://localhost:2222',
-        changeOrigin: true
+        changeOrigin: true,
+        // /api/traffic/stream and /api/logs/stream are WebSockets.
+        ws: true
       }
     }
   },

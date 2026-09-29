@@ -34,5 +34,10 @@ export const useKeysStore = defineStore('keys', () => {
     await fetchKeys()
   }
 
-  return { keys, loading, error, fetchKeys, addKey, updateKey, deleteKey }
+  async function setDefaultKey(name: string) {
+    await api.setDefaultKey(name)
+    await fetchKeys()
+  }
+
+  return { keys, loading, error, fetchKeys, addKey, updateKey, deleteKey, setDefaultKey }
 })

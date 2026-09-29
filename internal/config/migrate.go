@@ -49,6 +49,7 @@ type compatTunnel struct {
 	TargetPort  int             `yaml:"target_port"`
 	SSHOptions  []string        `yaml:"ssh_options"`
 	AutoStart   bool            `yaml:"auto_start"`
+	Direct      bool            `yaml:"direct"`
 	Description string          `yaml:"description"`
 }
 
@@ -115,7 +116,7 @@ func (c compatConfig) canonical() *Config {
 			Name: name, Remote: ref, Direction: t.Direction,
 			BindAddress: t.BindAddress, BindPort: t.BindPort,
 			TargetHost: t.TargetHost, TargetPort: t.TargetPort,
-			SSHOptions: t.SSHOptions, AutoStart: t.AutoStart, Description: t.Description,
+			SSHOptions: t.SSHOptions, AutoStart: t.AutoStart, Direct: t.Direct, Description: t.Description,
 		})
 	}
 

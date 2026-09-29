@@ -16,10 +16,15 @@ import {
   NSwitch,
   NTag,
   NText,
+  useDialog,
   useMessage,
 } from 'naive-ui'
 import type { DataTableColumns, DataTableRowKey } from 'naive-ui'
 import { api, getErrorMessage, type Tunnel, type TunnelStatus } from '@/api/client'
+import TunnelOverview from '@/components/TunnelOverview.vue'
+import TunnelWizard from '@/components/TunnelWizard.vue'
+import TunnelDetail from '@/components/TunnelDetail.vue'
+import { useRoute, useRouter } from 'vue-router'
 import TunnelTopologyView from '@/components/TunnelTopologyView.vue'
 import { topologyViewState } from '@/components/topologyViewState'
 import { copyText } from '@/clipboard'
@@ -27,21 +32,48 @@ import { formatEndpoint, parseEndpoint, validateName } from '@/validation'
 import { useI18n } from '@/i18n'
 import { useRemotesStore } from '@/stores/remotes'
 import { useTunnelsStore } from '@/stores/tunnels'
+import { useTrafficStore } from '@/stores/traffic'
+import { formatRate } from '@/format'
+import { useTunnelText, type TunnelCardAction } from '@/tunnelText'
 
 const tunnelStore = useTunnelsStore()
 const remoteStore = useRemotesStore()
 const message = useMessage()
+const dialog = useDialog()
 const { t } = useI18n()
+const trafficStore = useTrafficStore()
+const route = useRoute()
+const router = useRouter()
+const tunnelText = useTunnelText()
 
 const showModal = ref(false)
+const showWizard = ref(false)
+const wizardRemote = ref('')
+const overviewRef = ref<InstanceType<typeof TunnelOverview> | null>(null)
 const showCommandModal = ref(false)
-const showActionModal = ref(false)
+const showDetail = ref(false)
+const detailName = ref<string | null>(null)
 const commandLoading = ref(false)
 const commandTunnelLabel = ref('')
 const commandValue = ref('')
 const editingName = ref<string | null>(null)
-const viewMode = ref<'topology' | 'table'>('topology')
-const activeTunnel = ref<TunnelStatus | null>(null)
+type ViewMode = 'overview' | 'topology' | 'table'
+const viewModeKey = 'ssh-tunnel-service.tunnels.view'
+const viewMode = ref<ViewMode>(loadViewMode())
+watch(viewMode, (mode) => {
+  try { localStorage.setItem(viewModeKey, mode) } catch { /* storage unavailable */ }
+})
+
+function loadViewMode(): ViewMode {
+  try {
+    const stored = localStorage.getItem(viewModeKey)
+    if (stored === 'overview' || stored === 'topology' || stored === 'table') return stored
+  } catch { /* storage unavailable */ }
+  return 'overview'
+}
+
+// Tunnels with a start/stop in flight, so their card switch shows a spinner.
+const busy = ref(new Set<string>())
 const selectedTunnelName = ref<string | null>(null)
 const checkedRowKeys = ref<DataTableRowKey[]>([])
 
@@ -63,6 +95,7 @@ function createDefaultTunnel(): Tunnel {
     target_port: 0,
     ssh_options: [],
     auto_start: false,
+    direct: false,
     description: '',
   }
 }
@@ -78,6 +111,7 @@ function toTunnelForm(tunnel: Tunnel | TunnelStatus): Tunnel {
     target_port: tunnel.target_port,
     ssh_options: Array.isArray(tunnel.ssh_options) ? [...tunnel.ssh_options] : [],
     auto_start: tunnel.auto_start,
+    direct: tunnel.direct ?? false,
     description: tunnel.description,
   }
 }
@@ -86,7 +120,7 @@ const form = ref<Tunnel>(createDefaultTunnel())
 const remoteOptions = computed(() => remoteStore.remotes.map((remote) => ({ label: `${remote.name} (${remote.host})`, value: remote.name })))
 
 type TunnelDirection = Tunnel['direction']
-type DirectionMeta = { value: TunnelDirection; code: string; title: string; summary: string; bindMeaning: string; targetMeaning: string }
+type DirectionMeta = { value: TunnelDirection; code: string; title: string; summary: string; bindLabel: string; targetLabel: string; bindMeaning: string; targetMeaning: string }
 
 const directionMeta = computed<Record<TunnelDirection, DirectionMeta>>(() => ({
   '-L': {
@@ -94,6 +128,8 @@ const directionMeta = computed<Record<TunnelDirection, DirectionMeta>>(() => ({
     code: '-L',
     title: t('tunnels.direction.localTitle'),
     summary: t('tunnels.direction.localSummary'),
+    bindLabel: t('tunnels.direction.localBindLabel'),
+    targetLabel: t('tunnels.direction.localTargetLabel'),
     bindMeaning: t('tunnels.direction.localBindMeaning'),
     targetMeaning: t('tunnels.direction.localTargetMeaning'),
   },
@@ -102,6 +138,8 @@ const directionMeta = computed<Record<TunnelDirection, DirectionMeta>>(() => ({
     code: '-R',
     title: t('tunnels.direction.remoteTitle'),
     summary: t('tunnels.direction.remoteSummary'),
+    bindLabel: t('tunnels.direction.remoteBindLabel'),
+    targetLabel: t('tunnels.direction.remoteTargetLabel'),
     bindMeaning: t('tunnels.direction.remoteBindMeaning'),
     targetMeaning: t('tunnels.direction.remoteTargetMeaning'),
   },
@@ -134,6 +172,13 @@ function runValidation(): boolean {
   return !errors.name && !errors.remote && !errors.bind && !errors.target
 }
 
+// Metering is on unless the tunnel is direct; the form speaks in terms of the
+// benefit ("measure traffic") rather than the mechanism.
+const meterTraffic = computed({
+  get: () => !form.value.direct,
+  set: (on: boolean) => { form.value.direct = !on },
+})
+
 // Live feedback once the user has attempted a submit.
 watch([form, bindInput, targetInput], () => {
   if (submitted.value) runValidation()
@@ -153,7 +198,28 @@ function resetForm() {
   syncEndpointInputs()
 }
 
-async function openAdd() {
+// New tunnels start in the guided wizard; "Advanced" falls back to the full form.
+function openAdd() {
+  wizardRemote.value = ''
+  if (viewMode.value === 'topology') {
+    const active = topologyViewState.remoteId
+    if (active && remoteStore.remotes.some((r) => r.name === active)) wizardRemote.value = active
+  }
+  showWizard.value = true
+}
+
+function openAdvancedFromWizard() {
+  showWizard.value = false
+  void openAddForm()
+}
+
+async function onWizardCreated(name: string) {
+  if (viewMode.value !== 'overview') return
+  await nextTick()
+  await overviewRef.value?.focusTunnel(name)
+}
+
+async function openAddForm() {
   showModal.value = false
   editingName.value = null
   resetForm()
@@ -163,6 +229,10 @@ async function openAdd() {
     if (active && remoteStore.remotes.some((r) => r.name === active)) {
       form.value.remote = active
     }
+  }
+  // With a single server there is nothing to choose.
+  if (!form.value.remote && remoteStore.remotes.length === 1) {
+    form.value.remote = remoteStore.remotes[0].name
   }
   await nextTick()
   showModal.value = true
@@ -240,6 +310,45 @@ async function doRestart(name: string) {
   }
 }
 
+async function withBusy(name: string, run: () => Promise<void>) {
+  busy.value = new Set(busy.value).add(name)
+  try {
+    await run()
+  } finally {
+    const next = new Set(busy.value)
+    next.delete(name)
+    busy.value = next
+  }
+}
+
+function onCardToggle(tunnel: TunnelStatus, on: boolean) {
+  void withBusy(tunnel.name, () => (on ? doStart(tunnel.name) : doStop(tunnel.name)))
+}
+
+function confirmDelete(tunnel: TunnelStatus) {
+  dialog.warning({
+    title: t('tunnels.deleteConfirm'),
+    content: tunnelText.sentence(tunnel),
+    positiveText: t('common.delete'),
+    negativeText: t('common.cancel'),
+    onPositiveClick: () => doDelete(tunnel.name),
+  })
+}
+
+const cardActions: Record<TunnelCardAction, (tunnel: TunnelStatus) => void> = {
+  restart: (tunnel) => { void withBusy(tunnel.name, () => doRestart(tunnel.name)) },
+  edit: (tunnel) => { void openEdit(tunnel) },
+  command: (tunnel) => { void openCommand(tunnel) },
+  copyName: (tunnel) => { void copyName(tunnel.name) },
+  delete: confirmDelete,
+  details: openDetails,
+}
+
+function onCardAction(action: TunnelCardAction, tunnel: TunnelStatus) {
+  cardActions[action](tunnel)
+}
+
+
 async function copyName(name: string) {
   const ok = await copyText(name)
   if (ok) message.success(t('common.copied'))
@@ -275,59 +384,21 @@ async function batchDelete() {
   checkedRowKeys.value = []
 }
 
-function openActions(tunnel: TunnelStatus) {
-  activeTunnel.value = tunnel
+// Clicking a tunnel (card title, topology node) opens its detail drawer. The
+// drawer reads the live store entry, so state and traffic update in place.
+function openDetails(tunnel: TunnelStatus) {
+  detailName.value = tunnel.name
   selectedTunnelName.value = tunnel.name
-  showActionModal.value = true
+  showDetail.value = true
 }
 
-function closeActions() {
-  showActionModal.value = false
-}
+const detailTunnel = computed(() => tunnelStore.tunnels.find((x) => x.name === detailName.value) ?? null)
+const detailRemote = computed(() => remoteStore.remotes.find((r) => r.name === detailTunnel.value?.remote))
 
-const actionState = computed(() => activeTunnel.value?.state ?? 'stopped')
-
-async function actionStart() {
-  if (!activeTunnel.value) return
-  closeActions()
-  await doStart(activeTunnel.value.name)
-}
-
-async function actionStop() {
-  if (!activeTunnel.value) return
-  closeActions()
-  await doStop(activeTunnel.value.name)
-}
-
-async function actionRestart() {
-  if (!activeTunnel.value) return
-  closeActions()
-  await doRestart(activeTunnel.value.name)
-}
-
-async function actionEdit() {
-  if (!activeTunnel.value) return
-  const tunnel = activeTunnel.value
-  closeActions()
-  await nextTick()
-  await new Promise<void>((resolve) => window.setTimeout(resolve, 0))
-  await openEdit(tunnel)
-}
-
-async function actionCommand() {
-  if (!activeTunnel.value) return
-  const tunnel = activeTunnel.value
-  closeActions()
-  await nextTick()
-  await new Promise<void>((resolve) => window.setTimeout(resolve, 0))
-  await openCommand(tunnel)
-}
-
-async function actionDelete() {
-  if (!activeTunnel.value) return
-  const name = activeTunnel.value.name
-  closeActions()
-  await doDelete(name)
+// Edit and delete close the drawer first so the dialog is not stacked on it.
+function onDetailAction(action: TunnelCardAction, tunnel: TunnelStatus) {
+  if (action === 'edit' || action === 'delete') showDetail.value = false
+  onCardAction(action, tunnel)
 }
 
 async function openCommand(row: TunnelStatus) {
@@ -348,7 +419,12 @@ async function openCommand(row: TunnelStatus) {
 
 const columns = computed<DataTableColumns<TunnelStatus>>(() => [
   { type: 'selection' },
-  { title: t('tunnels.columns.name'), key: 'name', ellipsis: { tooltip: true } },
+  {
+    title: t('tunnels.columns.name'),
+    key: 'name',
+    ellipsis: { tooltip: true },
+    render: (row) => h('a', { class: 'name-link', onClick: () => openDetails(row) }, row.name),
+  },
   { title: t('tunnels.columns.remote'), key: 'remote', width: 140 },
   {
     title: t('tunnels.columns.direction'),
@@ -358,6 +434,16 @@ const columns = computed<DataTableColumns<TunnelStatus>>(() => [
   },
   { title: t('tunnels.columns.bind'), key: 'bind', render: (row) => h('span', { style: 'font-family:monospace;font-size:12px' }, `${row.bind_address}:${row.bind_port}`) },
   { title: t('tunnels.columns.target'), key: 'target', render: (row) => h('span', { style: 'font-family:monospace;font-size:12px' }, `${row.target_host}:${row.target_port}`) },
+  {
+    title: t('tunnels.columns.traffic'),
+    key: 'traffic',
+    width: 170,
+    render: (row) => {
+      if (row.direct) return h('span', { style: 'font-size:12px;color:var(--color-text-muted)' }, t('traffic.directShort'))
+      const c = trafficStore.tunnels[row.name] ?? row.traffic
+      return h('span', { style: 'font-size:12px;font-variant-numeric:tabular-nums;white-space:nowrap' }, `↓ ${formatRate(c?.down_rate ?? 0)}  ↑ ${formatRate(c?.up_rate ?? 0)}`)
+    },
+  },
   { title: t('tunnels.columns.state'), key: 'state', width: 90, render: (row) => h(NTag, { type: stateType[row.state], size: 'small', round: true }, { default: () => t(`common.${row.state}`) }) },
   {
     title: t('tunnels.columns.actions'),
@@ -380,9 +466,16 @@ const columns = computed<DataTableColumns<TunnelStatus>>(() => [
   },
 ])
 
-onMounted(() => {
-  void refresh()
+onMounted(async () => {
   tunnelStore.startAutoRefresh()
+  await refresh()
+  // Deep link from a server card's "New tunnel here": /tunnels?new=<server>.
+  const target = route.query.new
+  if (typeof target === 'string') {
+    wizardRemote.value = remoteStore.remotes.some((r) => r.name === target) ? target : ''
+    showWizard.value = true
+    void router.replace({ query: {} })
+  }
 })
 
 onUnmounted(() => {
@@ -396,11 +489,12 @@ onUnmounted(() => {
       <span class="page-title">{{ t('tunnels.title') }}</span>
       <n-space align="center">
         <n-button-group>
+          <n-button :type="viewMode === 'overview' ? 'primary' : 'default'" @click="viewMode = 'overview'">{{ t('common.overview') }}</n-button>
           <n-button :type="viewMode === 'topology' ? 'primary' : 'default'" @click="viewMode = 'topology'">{{ t('common.topology') }}</n-button>
           <n-button :type="viewMode === 'table' ? 'primary' : 'default'" @click="viewMode = 'table'">{{ t('common.table') }}</n-button>
         </n-button-group>
         <n-button secondary :loading="tunnelStore.loading || remoteStore.loading" @click="refresh">{{ t('common.refresh') }}</n-button>
-        <n-button type="primary" @click="void openAdd()">{{ t('common.add') }}</n-button>
+        <n-button type="primary" @click="openAdd">{{ t('common.add') }}</n-button>
       </n-space>
     </div>
 
@@ -418,14 +512,25 @@ onUnmounted(() => {
           <n-button size="small" tertiary @click="checkedRowKeys = []">{{ t('common.clearSelection') }}</n-button>
         </n-space>
       </div>
-      <n-card :bordered="false" class="content-card">
+      <TunnelOverview
+        v-if="viewMode === 'overview'"
+        :tunnels="tunnelStore.tunnels"
+        :remotes="remoteStore.remotes"
+        :loading="tunnelStore.loading || remoteStore.loading"
+        :busy="busy"
+        @toggle="onCardToggle"
+        @action="onCardAction"
+        ref="overviewRef"
+        @add="openAdd"
+      />
+      <n-card v-else :bordered="false" class="content-card">
         <TunnelTopologyView
           v-if="viewMode === 'topology'"
           :tunnels="tunnelStore.tunnels"
           :remotes="remoteStore.remotes"
           :loading="tunnelStore.loading || remoteStore.loading"
           :selected-tunnel-name="selectedTunnelName"
-          @select="openActions"
+          @select="openDetails"
         />
         <n-data-table
           v-else
@@ -440,7 +545,15 @@ onUnmounted(() => {
       </n-card>
     </div>
 
-    <n-modal v-model:show="showModal" :title="editingName ? t('tunnels.editTitle') : t('tunnels.addTitle')" preset="dialog" style="width:680px">
+    <TunnelWizard
+      v-model:show="showWizard"
+      :remotes="remoteStore.remotes"
+      :initial-remote="wizardRemote"
+      @created="onWizardCreated"
+      @advanced="openAdvancedFromWizard"
+    />
+
+    <n-modal v-model:show="showModal" :title="editingName ? t('tunnels.editTitle') : t('tunnels.addTitle')" preset="dialog" style="width:680px;max-width:calc(100vw - 32px)">
       <n-form label-placement="left" label-width="120" style="margin-top:8px">
         <n-form-item :label="t('tunnels.fields.name')" :validation-status="status('name')" :feedback="feedback('name')">
           <n-input v-model:value="form.name" placeholder="e.g. db-forward" />
@@ -478,25 +591,31 @@ onUnmounted(() => {
         <n-form-item label=" " :show-feedback="false" class="direction-help-item">
           <div class="direction-help">
             <div class="direction-help-row">
-              <span class="direction-help-tag">Bind</span>
+              <span class="direction-help-tag">{{ selectedDirection.bindLabel }}</span>
               <span>{{ selectedDirection.bindMeaning }}</span>
             </div>
             <div class="direction-help-row">
-              <span class="direction-help-tag direction-help-tag--target">Target</span>
+              <span class="direction-help-tag direction-help-tag--target">{{ selectedDirection.targetLabel }}</span>
               <span>{{ selectedDirection.targetMeaning }}</span>
             </div>
           </div>
         </n-form-item>
-        <n-form-item :label="t('tunnels.columns.bind')" :validation-status="status('bind')" :feedback="feedback('bind')">
+        <n-form-item :label="selectedDirection.bindLabel" :validation-status="status('bind')" :feedback="feedback('bind')">
           <n-input v-model:value="bindInput" :placeholder="t('tunnels.listenPlaceholder')" />
         </n-form-item>
-        <n-form-item :label="t('tunnels.columns.target')" :validation-status="status('target')" :feedback="feedback('target')">
+        <n-form-item :label="selectedDirection.targetLabel" :validation-status="status('target')" :feedback="feedback('target')">
           <n-input v-model:value="targetInput" :placeholder="t('tunnels.targetPlaceholder')" />
         </n-form-item>
         <n-form-item :label="t('tunnels.fields.autoStart')">
           <n-space vertical :size="2" style="width:100%">
             <n-switch v-model:value="form.auto_start" />
             <n-text depth="3" style="font-size:12px">{{ t('tunnels.autoStartHint') }}</n-text>
+          </n-space>
+        </n-form-item>
+        <n-form-item :label="t('tunnels.fields.meterTraffic')">
+          <n-space vertical :size="2" style="width:100%">
+            <n-switch v-model:value="meterTraffic" />
+            <n-text depth="3" style="font-size:12px">{{ meterTraffic ? t('tunnels.meterHint') : t('tunnels.directHint') }}</n-text>
           </n-space>
         </n-form-item>
         <n-form-item :label="t('tunnels.fields.description')">
@@ -511,39 +630,16 @@ onUnmounted(() => {
       </template>
     </n-modal>
 
-    <n-modal v-model:show="showActionModal" :title="activeTunnel ? t('tunnels.actionTitle', { name: activeTunnel.name }) : t('tunnels.title')" preset="dialog" style="width:460px">
-      <div v-if="activeTunnel" class="action-summary">
-        <div class="action-summary-row"><span class="action-summary-label">{{ t('tunnels.fields.remote') }}</span><span class="action-summary-value">{{ activeTunnel.remote }}</span></div>
-        <div class="action-summary-row"><span class="action-summary-label">{{ t('tunnels.fields.direction') }}</span><span class="action-summary-value"><span class="dir-chip" :class="activeTunnel.direction === '-L' ? 'local' : 'remote'">{{ activeTunnel.direction }}</span></span></div>
-        <div class="action-summary-row"><span class="action-summary-label">{{ t('tunnels.columns.bind') }}</span><span class="action-summary-value mono">{{ activeTunnel.bind_address }}:{{ activeTunnel.bind_port }}</span></div>
-        <div class="action-summary-row"><span class="action-summary-label">{{ t('tunnels.columns.target') }}</span><span class="action-summary-value mono">{{ activeTunnel.target_host }}:{{ activeTunnel.target_port }}</span></div>
-        <div class="action-summary-row">
-          <span class="action-summary-label">{{ t('tunnels.fields.state') }}</span>
-          <span class="action-summary-value">
-            <n-tag :type="stateType[activeTunnel.state]" size="small" round>{{ t(`common.${activeTunnel.state}`) }}</n-tag>
-            <span v-if="activeTunnel.error" class="action-summary-error">{{ activeTunnel.error }}</span>
-          </span>
-        </div>
-      </div>
-      <template #action>
-        <n-space justify="space-between" style="width:100%">
-          <n-popconfirm @positive-click="actionDelete">
-            <template #trigger><n-button type="error" ghost>{{ t('common.delete') }}</n-button></template>
-            {{ t('tunnels.deleteConfirm') }}
-          </n-popconfirm>
-          <n-space>
-            <n-button secondary @click="void copyName(activeTunnel!.name)">{{ t('common.copyName') }}</n-button>
-            <n-button secondary @click="void actionCommand()">{{ t('common.ssh') }}</n-button>
-            <n-button secondary @click="void actionEdit()">{{ t('common.edit') }}</n-button>
-            <n-button v-if="actionState !== 'running'" type="success" @click="actionStart">{{ t('common.start') }}</n-button>
-            <n-button v-else type="warning" @click="actionStop">{{ t('common.stop') }}</n-button>
-            <n-button v-if="actionState !== 'stopped'" secondary @click="actionRestart">{{ t('common.restart') }}</n-button>
-          </n-space>
-        </n-space>
-      </template>
-    </n-modal>
+    <TunnelDetail
+      v-model:show="showDetail"
+      :tunnel="detailTunnel"
+      :remote="detailRemote"
+      :busy="detailTunnel ? busy.has(detailTunnel.name) : false"
+      @toggle="onCardToggle"
+      @action="onDetailAction"
+    />
 
-    <n-modal v-model:show="showCommandModal" :title="t('tunnels.commandTitle', { name: commandTunnelLabel })" preset="dialog" style="width:720px">
+    <n-modal v-model:show="showCommandModal" :title="t('tunnels.commandTitle', { name: commandTunnelLabel })" preset="dialog" style="width:720px;max-width:calc(100vw - 32px)">
       <n-space vertical :size="12" style="margin-top:8px">
         <n-text depth="3">{{ t('tunnels.commandHelp') }}</n-text>
         <n-text v-if="commandLoading" depth="3">{{ t('common.loading') }}</n-text>
@@ -561,9 +657,15 @@ onUnmounted(() => {
 
 <style scoped>
 .page { display: flex; flex-direction: column; height: 100%; }
-.page-toolbar { display: flex; align-items: center; justify-content: space-between; padding: 10px 20px; background: var(--color-surface); border-bottom: 1px solid var(--color-border); flex-shrink: 0; gap: 12px; }
+.page-toolbar { display: flex; align-items: center; justify-content: space-between; padding: 10px 20px; background: var(--color-surface); border-bottom: 1px solid var(--color-border); flex-shrink: 0; gap: 12px; flex-wrap: wrap; }
 .page-title { font-size: 14px; font-weight: 600; color: var(--color-text); }
 .page-body { flex: 1; overflow: auto; padding: 20px; }
+:deep(.name-link) { color: var(--color-text); font-weight: 600; cursor: pointer; }
+:deep(.name-link:hover) { color: var(--color-accent); text-decoration: underline; }
+@media (max-width: 640px) {
+  .page-toolbar { padding: 10px 16px; }
+  .page-body { padding: 16px; }
+}
 .content-card { border-radius: 12px; }
 .batch-bar {
   display: flex;
@@ -664,13 +766,4 @@ onUnmounted(() => {
 .direction-help-row { display: flex; gap: 8px; align-items: flex-start; }
 .direction-help-tag { min-width: 48px; display: inline-flex; justify-content: center; padding: 2px 8px; border-radius: 999px; background: var(--color-tag-blue-bg); color: var(--color-tag-blue-text); font-size: 11px; font-weight: 600; }
 .direction-help-tag--target { background: var(--color-tag-purple-bg); color: var(--color-tag-purple-text); }
-.action-summary { display: flex; flex-direction: column; gap: 12px; }
-.action-summary-row { display: flex; justify-content: space-between; gap: 16px; }
-.action-summary-label { color: var(--color-text-tertiary); font-size: 12px; }
-.action-summary-value { display: inline-flex; align-items: center; gap: 8px; text-align: right; }
-.action-summary-value.mono { font-family: 'SF Mono', 'Fira Code', monospace; font-size: 12px; }
-.action-summary-error { color: var(--color-danger); font-size: 12px; max-width: 220px; }
-.dir-chip { display: inline-flex; padding: 2px 8px; border-radius: 999px; font-family: 'SF Mono', 'Fira Code', monospace; font-size: 11px; font-weight: 700; }
-.dir-chip.local { background: var(--color-tag-blue-bg); color: var(--color-tag-blue-text); }
-.dir-chip.remote { background: var(--color-tag-pink-bg); color: var(--color-tag-pink-text); }
 </style>

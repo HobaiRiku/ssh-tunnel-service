@@ -1,15 +1,48 @@
 <script setup lang="ts">
-import { NConfigProvider, NMessageProvider, NSelect, darkTheme, useOsTheme } from 'naive-ui'
+import { NConfigProvider, NDialogProvider, NMessageProvider, NSelect, darkTheme, useOsTheme } from 'naive-ui'
+import type { GlobalThemeOverrides } from 'naive-ui'
 import { RouterLink, useRoute } from 'vue-router'
-import { computed, watchEffect } from 'vue'
+import { computed, onBeforeUnmount, onMounted, watchEffect } from 'vue'
 import { useI18n, type Locale } from '@/i18n'
 import InstanceBadge from '@/components/InstanceBadge.vue'
+import TrafficPill from '@/components/TrafficPill.vue'
+import { useTrafficStore } from '@/stores/traffic'
 
 const osTheme = useOsTheme()
 const isDark = computed(() => osTheme.value === 'dark')
 const theme = computed(() => isDark.value ? darkTheme : null)
 const route = useRoute()
 const { locale, setLocale, t } = useI18n()
+const traffic = useTrafficStore()
+
+// naive-ui follows the same design tokens as the custom components: one accent,
+// softer radii, and the system UI font with CJK fallbacks.
+const fontFamily = 'Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", sans-serif'
+const fontFamilyMono = '"JetBrains Mono", "SF Mono", ui-monospace, Menlo, Consolas, monospace'
+const themeOverrides = computed<GlobalThemeOverrides>(() => {
+  const accent = isDark.value
+    ? { primaryColor: '#60a5fa', primaryColorHover: '#93c5fd', primaryColorPressed: '#3b82f6', primaryColorSuppl: '#3b82f6' }
+    : { primaryColor: '#2563eb', primaryColorHover: '#3b82f6', primaryColorPressed: '#1d4ed8', primaryColorSuppl: '#3b82f6' }
+  return {
+    common: {
+      ...accent,
+      fontFamily,
+      fontFamilyMono,
+      borderRadius: '8px',
+      borderRadiusSmall: '6px',
+      bodyColor: isDark.value ? '#0b1220' : '#f4f6fb',
+      cardColor: isDark.value ? '#111a2e' : '#ffffff',
+      modalColor: isDark.value ? '#111a2e' : '#ffffff',
+      popoverColor: isDark.value ? '#16213a' : '#ffffff',
+    },
+    Card: { borderRadius: '14px' },
+    Dialog: { borderRadius: '14px' },
+    Button: { fontWeight: '500' },
+  }
+})
+
+onMounted(() => traffic.connect())
+onBeforeUnmount(() => traffic.disconnect())
 
 // Custom (non-naive-ui) elements read theme colors from CSS variables toggled
 // on <html>, so they stay in sync with naive-ui's own dark theme even for
@@ -35,7 +68,8 @@ function switchLocale(next: Locale) {
 </script>
 
 <template>
-  <n-config-provider :theme="theme">
+  <n-config-provider :theme="theme" :theme-overrides="themeOverrides">
+    <n-dialog-provider>
     <n-message-provider>
       <div class="app-shell">
         <header class="app-header">
@@ -67,6 +101,7 @@ function switchLocale(next: Locale) {
               :class="{ active: route.path === tab.to }"
             >{{ tab.label }}</RouterLink>
           </nav>
+          <TrafficPill />
           <InstanceBadge />
           <n-select
             class="locale-switcher"
@@ -81,14 +116,24 @@ function switchLocale(next: Locale) {
         <main class="app-content">
           <RouterView />
         </main>
+        <nav class="bottom-nav" :aria-label="t('app.navigation')">
+          <RouterLink
+            v-for="tab in tabs"
+            :key="tab.to"
+            :to="tab.to"
+            class="bottom-tab"
+            :class="{ active: route.path === tab.to }"
+          >{{ tab.label }}</RouterLink>
+        </nav>
       </div>
     </n-message-provider>
+    </n-dialog-provider>
   </n-config-provider>
 </template>
 
 <style>
 :root {
-  --color-bg: #f1f5f9;
+  --color-bg: #f4f6fb;
   --color-surface: #ffffff;
   --color-surface-alt: #f8fafc;
   --color-surface-hover: #f1f5f9;
@@ -139,14 +184,26 @@ function switchLocale(next: Locale) {
   --color-flow-from: #f8fafc;
   --color-flow-to: #f1f5f9;
   --color-flow-grid: #e2e8f0;
+
+  /* Direction identity for cards and charts: "access a remote service" (-L)
+     is emerald, "publish a local service" (-R) violet — the same hues the
+     topology uses for running tunnels. */
+  --color-dir-local: #10b981;
+  --color-dir-local-soft: #d1fae5;
+  --color-dir-local-text: #047857;
+  --color-dir-remote: #8b5cf6;
+  --color-dir-remote-soft: #ede9fe;
+  --color-dir-remote-text: #6d28d9;
+
+  --font-mono: "JetBrains Mono", "SF Mono", ui-monospace, Menlo, Consolas, monospace;
 }
 
 :root.dark {
-  --color-bg: #0f172a;
-  --color-surface: #1e293b;
-  --color-surface-alt: #253449;
-  --color-surface-hover: #2c3e5c;
-  --color-border: #334155;
+  --color-bg: #0b1220;
+  --color-surface: #111a2e;
+  --color-surface-alt: #16213a;
+  --color-surface-hover: #1c2a47;
+  --color-border: #243352;
   --color-border-strong: #475569;
   --color-text: #e2e8f0;
   --color-text-secondary: #cbd5e1;
@@ -190,20 +247,29 @@ function switchLocale(next: Locale) {
   --color-flow-from: #1a2436;
   --color-flow-to: #111827;
   --color-flow-grid: #334155;
+
+  --color-dir-local: #34d399;
+  --color-dir-local-soft: rgba(16, 185, 129, 0.16);
+  --color-dir-local-text: #6ee7b7;
+  --color-dir-remote: #a78bfa;
+  --color-dir-remote-soft: rgba(139, 92, 246, 0.18);
+  --color-dir-remote-text: #c4b5fd;
 }
 
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 html, body { height: 100%; }
 body {
-  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Inter', sans-serif;
+  font-family: Inter, -apple-system, BlinkMacSystemFont, 'Segoe UI', 'PingFang SC', 'Hiragino Sans GB', 'Microsoft YaHei', sans-serif;
   background: var(--color-bg);
   color: var(--color-text);
+  -webkit-font-smoothing: antialiased;
 }
 
 .app-shell {
   display: flex;
   flex-direction: column;
   height: 100vh;
+  height: 100dvh;
 }
 
 .app-header {
@@ -265,5 +331,33 @@ body {
   overflow: hidden;
   display: flex;
   flex-direction: column;
+}
+
+.bottom-nav { display: none; }
+
+/* Phone layout: the header keeps brand + live traffic, navigation moves to a
+   thumb-reachable bar at the bottom. */
+@media (max-width: 640px) {
+  .app-header { padding: 0 16px; gap: 10px; }
+  .header-nav, .brand-name { display: none; }
+  .locale-switcher { width: 76px; }
+  .header-brand { flex: 1; }
+  .bottom-nav {
+    display: flex;
+    flex-shrink: 0;
+    background: var(--color-surface);
+    border-top: 1px solid var(--color-border);
+    padding-bottom: env(safe-area-inset-bottom);
+  }
+  .bottom-tab {
+    flex: 1;
+    text-align: center;
+    padding: 12px 0;
+    font-size: 13px;
+    font-weight: 500;
+    color: var(--color-text-tertiary);
+    text-decoration: none;
+  }
+  .bottom-tab.active { color: var(--color-accent); font-weight: 600; }
 }
 </style>

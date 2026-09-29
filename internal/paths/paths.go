@@ -23,8 +23,10 @@ const (
 	envHome        = "SSH_TUNNEL_HOME"
 
 	subData = "data"
-	subLogs = "logs"
-	subKeys = "keys"
+
+	fileTraffic = "traffic.json"
+	subLogs     = "logs"
+	subKeys     = "keys"
 
 	fileConfig     = "config.yaml"
 	fileLog        = "ssh-tunnel-service.log"
@@ -162,6 +164,9 @@ func (p Paths) Config() string     { return filepath.Join(p.Home, fileConfig) }
 func (p Paths) KnownHosts() string { return filepath.Join(p.Home, fileKnownHosts) }
 func (p Paths) Token() string      { return filepath.Join(p.Home, fileToken) }
 func (p Paths) LogFile() string    { return filepath.Join(p.Logs(), fileLog) }
+
+// Traffic is the persisted traffic book (totals and long-term history).
+func (p Paths) Traffic() string { return filepath.Join(p.Data(), fileTraffic) }
 
 // FileMode is the mode for secrets (API token, private keys): always owner-only.
 func (p Paths) FileMode() os.FileMode { return p.perms().Secret }
